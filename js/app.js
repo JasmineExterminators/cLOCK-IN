@@ -2,7 +2,8 @@ import { CARS, HOMES, CITIES, PAYDAY, rankFor, nextRank, LEGACY_HOME, LEGACY_CAR
 import { renderScene, renderCarSide, renderHomeTile } from './art.js';
 import { Pix, hex } from './pixel.js';
 import { dotText } from './glyphs.js';
-import { crewApi, newPlayer, normCode, prettyCode, friendsAvailable } from './social.js';
+import { crewApi, normCode, prettyCode } from './social.js';
+import { cloudAvailable, currentUser, signIn, signUp, signOutLocal, cloudSave, getMeta, setMeta, mergeSaves } from './cloud.js';
 
 /* ------------------------------------------------------------------ */
 /* Time helpers                                                        */
@@ -42,8 +43,8 @@ const fresh = () => ({
   owned: { car: ['bike'], home: ['pgh-dorm'] },
   equipped: { car: 'bike', home: 'pgh-dorm' },
   lastPayday: prevPayday(Date.now()),
-  player: null, // { id, token } for friends; made on first load
   crew: null, // crew code, e.g. 'K7MPQ2'
+  owner: null, // account id this save belongs to (null = made before signing in)
 });
 
 function migrate(s) {
@@ -64,7 +65,7 @@ function migrate(s) {
   s.equipped.car = mapCar(s.equipped.car);
   if (!s.owned.home.includes(s.equipped.home)) s.equipped.home = 'pgh-dorm';
   if (!s.owned.car.includes(s.equipped.car)) s.equipped.car = 'bike';
-  if (!s.player || !s.player.id || !s.player.token) s.player = newPlayer();
+  delete s.player; // old friends id, replaced by accounts
   return s;
 }
 
@@ -76,9 +77,13 @@ function load() {
   } catch {}
   return migrate(fresh());
 }
-function save() {
+function saveLocal() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+}
+function save() {
+  saveLocal();
   publishMe();
+  queueCloudSave();
 }
 
 /* ------------------------------------------------------------------ */
@@ -534,7 +539,7 @@ function gotCrew(crew) {
   crewMembers = crew.members || [];
   crewStatus = 'on';
   crewError = '';
-  if (!crewMembers.some((m) => m.id === state.player.id)) lostCrew('You’re no longer in that crew.');
+  if (currentUser() && !crewMembers.some((m) => m.id === currentUser().id)) lostCrew('You’re no longer in that crew.');
 }
 
 function lostCrew(message) {
@@ -542,7 +547,7 @@ function lostCrew(message) {
   crewMembers = [];
   crewStatus = 'idle';
   lastPublished = '';
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+  save();
   if (message) toast(message);
 }
 
@@ -552,7 +557,7 @@ function handleCrewError(e) {
 }
 
 async function refreshCrew() {
-  if (!state.crew || !friendsAvailable()) return;
+  if (!state.crew || !currentUser()) return;
   if (!crewMembers.length) { crewStatus = 'loading'; if (view === 'friends') renderFriends(); }
   try { gotCrew(await crewApi.get(state.crew)); }
   catch (e) { handleCrewError(e); }
@@ -563,14 +568,14 @@ async function refreshCrew() {
 let lastPublished = '';
 let publishTimer = null;
 function publishMe() {
-  if (!state.crew || !friendsAvailable()) return;
+  if (!state.crew || !currentUser()) return;
   clearTimeout(publishTimer);
   publishTimer = setTimeout(async () => {
     const card = myCard();
     const json = JSON.stringify(card);
     if (json === lastPublished || !state.crew) return;
     lastPublished = json;
-    try { gotCrew(await crewApi.update(state.player, state.crew, card)); }
+    try { gotCrew(await crewApi.update(state.crew, card)); }
     catch (e) { lastPublished = ''; handleCrewError(e); }
     if (view === 'friends') renderFriends();
   }, 800);
@@ -607,7 +612,7 @@ async function crewAction(fn, done) {
 
 $('#crew-create').addEventListener('click', () => {
   if (!needName()) return;
-  crewAction(() => crewApi.create(state.player, myCard()), (c) => `Crew ${prettyCode(c)} is ready. Copy the invite link and send it to a friend.`);
+  crewAction(() => crewApi.create(myCard()), (c) => `Crew ${prettyCode(c)} is ready. Copy the invite link and send it to a friend.`);
 });
 
 $('#crew-join-form').addEventListener('submit', (e) => {
@@ -615,7 +620,7 @@ $('#crew-join-form').addEventListener('submit', (e) => {
   const code = normCode($('#crew-code').value);
   if (!code) { $('#crew-code').focus(); toast('Crew codes are 6 letters and numbers, like K7M-PQ2.'); return; }
   if (!needName()) return;
-  crewAction(() => crewApi.join(state.player, code, myCard()), (c) => `You joined crew ${prettyCode(c)}.`);
+  crewAction(() => crewApi.join(code, myCard()), (c) => `You joined crew ${prettyCode(c)}.`);
 });
 
 $('#crew-copy').addEventListener('click', async () => {
@@ -631,7 +636,7 @@ $('#crew-copy').addEventListener('click', async () => {
 $('#crew-leave').addEventListener('click', async () => {
   if (!(await ask(`Leave crew ${prettyCode(state.crew)}? You can rejoin later with the code.`, 'Leave crew'))) return;
   const code = state.crew;
-  try { await crewApi.leave(state.player, code); } catch {}
+  try { await crewApi.leave(code); } catch {}
   lostCrew();
   toast(`You left crew ${prettyCode(code)}.`);
   renderAll();
@@ -660,13 +665,21 @@ function friendScene(c) {
 function renderFriends() {
   const box = $('#friends');
   const inCrew = !!state.crew;
-  $('#crew-start').hidden = inCrew || !friendsAvailable();
-  $('#crew-bar').hidden = !inCrew || !friendsAvailable();
+  const signedIn = !!currentUser();
+  $('#crew-start').hidden = inCrew || !signedIn;
+  $('#crew-bar').hidden = !inCrew || !signedIn;
 
-  if (!friendsAvailable()) {
+  if (!cloudAvailable()) {
     $('#friends-sub').textContent = 'See your crew’s places and who’s on the clock right now.';
     box.innerHTML = `<div class="panel empty-panel"><h2>Friends works on the live site</h2>
       <p class="muted">Open cLOCK IN from its Vercel address to start or join a crew.</p></div>`;
+    return;
+  }
+  if (!signedIn) {
+    $('#friends-sub').textContent = 'See your crew’s places and who’s on the clock right now.';
+    box.innerHTML = `<div class="panel empty-panel"><h2>Sign in to use Friends</h2>
+      <p class="muted">${pendingInvite ? `You've been invited to crew ${prettyCode(pendingInvite)}. ` : ''}Friends see each other through their accounts. Signing in also backs up your progress.</p>
+      <button class="punch small" type="button" data-signin>Sign in or create an account</button></div>`;
     return;
   }
 
@@ -698,7 +711,7 @@ function renderFriends() {
     return;
   }
 
-  const me = state.player.id;
+  const me = currentUser().id;
   const byId = new Map(crewMembers.map((c) => [c.id, c]));
   byId.set(me, { id: me, ...myCard() });
   const cards = [...byId.values()].sort((a, b) => liveWeekHours(b) - liveWeekHours(a));
@@ -733,14 +746,17 @@ function renderFriends() {
   tickFriends();
 }
 
-$('#friends').addEventListener('click', (e) => { if (e.target.closest('[data-retry]')) refreshCrew(); });
+$('#friends').addEventListener('click', (e) => {
+  if (e.target.closest('[data-retry]')) refreshCrew();
+  if (e.target.closest('[data-signin]')) openAccount();
+});
 
 let friendsView = [];
 function tickFriends() {
   for (const c of friendsView) {
     const st = document.querySelector(`[data-status="${CSS.escape(c.id)}"]`);
     const wk = document.querySelector(`[data-week="${CSS.escape(c.id)}"]`);
-    const card = c.id === state.player.id ? { ...c, ...myCard() } : c;
+    const card = c.id === currentUser()?.id ? { ...c, ...myCard() } : c;
     if (st) {
       st.innerHTML = card.clockedInAt
         ? `<span class="pulse on" aria-hidden="true"></span> On the clock ${clock(Date.now() - card.clockedInAt)}${card.task ? `, on ${esc(card.task)}` : ''}`
@@ -749,6 +765,211 @@ function tickFriends() {
     if (wk) wk.textContent = dur(liveWeekHours(card) * HOUR);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Account and cloud saves (see js/cloud.js, api/auth.js, api/save.js)  */
+/* ------------------------------------------------------------------ */
+
+let syncStatus = 'idle'; // idle | saving | saved | offline | error
+let dirty = false; // local changes not yet in the cloud
+let syncTimer = null;
+let syncing = null;
+
+const hasProgress = (s) => (s.sessions || []).length > 0 || s.balance > 0 || (s.checks || []).length > 0;
+
+function setSync(st) {
+  syncStatus = st;
+  renderAccount();
+}
+
+// Replace the local save (from the cloud or a merge) without triggering another upload.
+function applyState(next) {
+  const uid = currentUser()?.id || null;
+  state = migrate({ ...fresh(), ...next, version: next.version || 0 });
+  state.owner = uid;
+  saveLocal();
+  lastSceneKey = '';
+  crewMembers = [];
+  lastPublished = '';
+  processPaydays();
+  renderAll();
+}
+
+function queueCloudSave() {
+  if (!currentUser() || !cloudAvailable()) return;
+  dirty = true;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushSave, 1500);
+  if (syncStatus !== 'saving') setSync('saving');
+}
+
+async function pushSave() {
+  if (!currentUser()) return;
+  if (syncing) { await syncing; if (dirty) return pushSave(); return; }
+  syncing = (async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const meta = getMeta();
+      try {
+        state.owner = currentUser().id;
+        const res = await cloudSave.put(state, meta.userId === currentUser().id ? meta.version || 0 : 0);
+        setMeta({ userId: currentUser().id, version: res.version });
+        dirty = false;
+        setSync('saved');
+        return;
+      } catch (e) {
+        if (e.status === 409 && e.current?.data) {
+          // Another device saved first: keep its save, add back any shifts only this device has.
+          applyState(mergeSaves(e.current.data, state));
+          setMeta({ userId: currentUser().id, version: e.current.version });
+          continue;
+        }
+        setSync(e.status === 0 ? 'offline' : 'error');
+        return;
+      }
+    }
+  })();
+  try { await syncing; } finally { syncing = null; }
+}
+
+// Bring this browser up to date with the account's save.
+async function pullSave() {
+  const user = currentUser();
+  if (!user || !cloudAvailable()) return;
+  if (dirty) return pushSave();
+  try {
+    const remote = await cloudSave.get();
+    const meta = getMeta();
+    if (!remote.data) {
+      // Nothing in the cloud yet: this browser's progress becomes the account's first save.
+      if (state.owner && state.owner !== user.id) applyState(fresh());
+      setMeta({ userId: user.id, version: 0 });
+      dirty = true;
+      return pushSave();
+    }
+    if (meta.userId === user.id && meta.version === remote.version && state.owner === user.id) { setSync('saved'); return; }
+    const firstTimeHere = state.owner !== user.id;
+    const keepLocal = firstTimeHere && !state.owner && hasProgress(state); // progress made before signing in
+    applyState(keepLocal ? mergeSaves(remote.data, state) : remote.data);
+    setMeta({ userId: user.id, version: remote.version });
+    if (keepLocal) { dirty = true; await pushSave(); } else setSync('saved');
+    if (firstTimeHere) toast(keepLocal ? 'Signed in. Your saved progress is loaded, plus shifts from this browser.' : 'Signed in. Your saved progress is loaded.');
+  } catch (e) {
+    setSync(e.status === 0 ? 'offline' : 'error');
+  }
+}
+
+/* ---------- account dialog ---------- */
+
+let accountMode = 'signin'; // signin | signup
+function openAccount(mode = 'signin') {
+  if (!cloudAvailable()) { toast('Accounts work on the live site. Open cLOCK IN from its Vercel address.'); return; }
+  accountMode = mode;
+  renderAccountDialog();
+  $('#account-error').hidden = true;
+  $('#account').showModal();
+  $('#account-email').focus();
+}
+
+function renderAccountDialog() {
+  const up = accountMode === 'signup';
+  $('#account-title').textContent = up ? 'Create your account' : 'Sign in';
+  $('#account-lede').textContent = up
+    ? 'Your progress in this browser comes with you. After this, it’s saved to your account automatically.'
+    : 'Pick up where you left off, on any device.';
+  $('#account-submit').textContent = up ? 'Create account' : 'Sign in';
+  $('#account-password').autocomplete = up ? 'new-password' : 'current-password';
+  $('#account-password').placeholder = up ? 'At least 8 characters' : '';
+  $('#account-switch').textContent = up ? 'Already have an account? Sign in' : 'New here? Create an account';
+}
+
+$('#account-switch').addEventListener('click', () => {
+  accountMode = accountMode === 'signup' ? 'signin' : 'signup';
+  $('#account-error').hidden = true;
+  renderAccountDialog();
+});
+$('#account-cancel').addEventListener('click', () => $('#account').close());
+
+$('#account-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('#account-email').value.trim();
+  const password = $('#account-password').value;
+  const btn = $('#account-submit');
+  btn.disabled = true;
+  $('#account-error').hidden = true;
+  try {
+    const user = accountMode === 'signup' ? await signUp(email, password) : await signIn(email, password);
+    $('#account').close();
+    $('#account-password').value = '';
+    if (state.owner && state.owner !== user.id) setMeta({});
+    await pullSave();
+    if (accountMode === 'signup') toast(`Account created. Your progress is backed up to ${user.email}.`);
+    renderAll();
+    if (state.crew) refreshCrew();
+  } catch (err) {
+    $('#account-error').textContent = err.message;
+    $('#account-error').hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function signOut() {
+  const ok = await ask('Sign out? Your progress stays saved in your account. This browser starts fresh until you sign in again.', 'Sign out');
+  if (!ok) return;
+  if (dirty) await pushSave();
+  signOutLocal();
+  state = fresh();
+  saveLocal();
+  crewMembers = [];
+  lastSceneKey = '';
+  dirty = false;
+  setSync('idle');
+  renderAll();
+  toast('Signed out.');
+}
+
+/* ---------- account UI ---------- */
+
+function syncLabel() {
+  return { saving: 'Saving…', saved: 'Backed up', offline: 'Offline. Will retry.', error: 'Couldn’t back up. Will retry.', idle: '' }[syncStatus];
+}
+
+function renderAccount() {
+  const user = currentUser();
+  const live = cloudAvailable();
+  // rail
+  const rail = $('#rail-account');
+  rail.hidden = !live;
+  if (live) {
+    rail.innerHTML = user
+      ? `<span class="acct-email" title="${esc(user.email)}">${esc(user.email)}</span>
+         <span class="acct-sync ${syncStatus}"><i aria-hidden="true"></i>${syncLabel()}</span>
+         <button class="text-btn" type="button" data-signout>Sign out</button>`
+      : `<span class="muted">Progress only lives in this browser.</span>
+         <button class="ghost-btn" type="button" data-signin>Sign in to back up</button>`;
+  }
+  // dashboard banner (signed out)
+  $('#backup-banner').hidden = !live || !!user;
+  // pay page panel
+  const pay = $('#account-panel');
+  pay.hidden = !live;
+  if (live) {
+    pay.innerHTML = user
+      ? `<div><h2>Account</h2><p class="muted">Signed in as ${esc(user.email)}. <span class="acct-sync ${syncStatus}"><i aria-hidden="true"></i>${syncLabel()}</span></p></div>
+         <button class="ghost-btn" type="button" data-signout>Sign out</button>`
+      : `<div><h2>Account</h2><p class="muted">Your progress only lives in this browser. Create an account to back it up and use it on other devices.</p></div>
+         <button class="punch small" type="button" data-signin>Back up my progress</button>`;
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const signin = e.target.closest('[data-signin], [data-signup]');
+  if (signin) { openAccount(signin.hasAttribute('data-signup') || hasProgress(state) ? 'signup' : 'signin'); return; }
+  if (e.target.closest('[data-signout]')) signOut();
+});
+
+window.addEventListener('online', () => { if (dirty) pushSave(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullSave(); });
 
 /* ------------------------------------------------------------------ */
 /* Greeting, brand, routing                                            */
@@ -779,6 +1000,7 @@ function renderAll() {
   renderRecent();
   renderBalance();
   renderGreeting();
+  renderAccount();
   if (view === 'shop') renderShop();
   if (view === 'shifts') renderPay();
   if (view === 'friends') renderFriends();
@@ -921,7 +1143,7 @@ processPaydays();
 save(); // persist any migration
 route();
 renderAll();
-publishMe();
+pullSave().then(publishMe);
 if (undeposited().length) openCheck(undeposited()[0]);
 
 setInterval(() => {

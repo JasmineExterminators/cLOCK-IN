@@ -37,6 +37,7 @@
           <span>Pay</span>
         </a>
       </div>
+      <div class="rail-account" id="rail-account" hidden></div>
       <div class="rail-wallet">
         <span class="muted">Balance</span>
         <strong class="money" data-bind="balance">$0.00</strong>
@@ -56,6 +57,11 @@
             <strong class="money" data-bind="balance">$0.00</strong>
           </div>
         </header>
+
+        <div class="backup-banner" id="backup-banner" hidden>
+          <span>Your progress only lives in this browser. Create an account to back it up and use it on your phone.</span>
+          <button class="ghost-btn" type="button" data-signup>Back up my progress</button>
+        </div>
 
         <div class="check-banner" id="check-banner" hidden>
           <span id="check-banner-text">Your paycheck is here.</span>
@@ -214,6 +220,7 @@
             <p class="muted" id="shifts-summary"></p>
           </div>
         </header>
+        <div class="panel account-panel" id="account-panel" hidden></div>
         <div class="pay-grid">
           <div class="panel">
             <div class="panel-head"><h2>Shifts</h2><span class="muted" id="shifts-count"></span></div>
@@ -283,6 +290,22 @@
     </div>
     <form method="dialog" class="check-actions">
       <button class="punch" value="deposit" id="check-deposit">Deposit</button>
+    </form>
+  </dialog>
+
+  <!-- Account -->
+  <dialog id="account" class="account-dialog" aria-labelledby="account-title">
+    <form id="account-form" class="account-form">
+      <h2 id="account-title">Sign in</h2>
+      <p class="muted" id="account-lede"></p>
+      <label><span>Email</span><input id="account-email" type="email" autocomplete="email" required /></label>
+      <label><span>Password</span><input id="account-password" type="password" autocomplete="current-password" minlength="8" required /></label>
+      <p class="account-error" id="account-error" role="alert" hidden></p>
+      <button class="punch small" id="account-submit" type="submit">Sign in</button>
+      <div class="account-foot">
+        <button class="text-btn" id="account-switch" type="button">New here? Create an account</button>
+        <button class="text-btn" id="account-cancel" type="button">Not now</button>
+      </div>
     </form>
   </dialog>
 
