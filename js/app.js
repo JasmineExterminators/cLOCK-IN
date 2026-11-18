@@ -2,7 +2,7 @@ import { CARS, HOMES, CITIES, PAYDAY, rankFor, nextRank, LEGACY_HOME, LEGACY_CAR
 import { renderScene, renderCarSide, renderHomeTile } from './art.js';
 import { Pix, hex } from './pixel.js';
 import { dotText } from './glyphs.js';
-import { connect } from './social.js';
+import { crewApi, newPlayer, normCode, prettyCode, friendsAvailable } from './social.js';
 
 /* ------------------------------------------------------------------ */
 /* Time helpers                                                        */
@@ -42,6 +42,8 @@ const fresh = () => ({
   owned: { car: ['bike'], home: ['pgh-dorm'] },
   equipped: { car: 'bike', home: 'pgh-dorm' },
   lastPayday: prevPayday(Date.now()),
+  player: null, // { id, token } for friends; made on first load
+  crew: null, // crew code, e.g. 'K7MPQ2'
 });
 
 function migrate(s) {
@@ -62,6 +64,7 @@ function migrate(s) {
   s.equipped.car = mapCar(s.equipped.car);
   if (!s.owned.home.includes(s.equipped.home)) s.equipped.home = 'pgh-dorm';
   if (!s.owned.car.includes(s.equipped.car)) s.equipped.car = 'bike';
+  if (!s.player || !s.player.id || !s.player.token) s.player = newPlayer();
   return s;
 }
 
@@ -71,7 +74,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) { const saved = JSON.parse(raw); return migrate({ ...fresh(), ...saved, version: saved.version || 0 }); }
   } catch {}
-  return fresh();
+  return migrate(fresh());
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
@@ -503,18 +506,18 @@ function renderShop() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Friends                                                             */
+/* Friends (crews on the Vercel API, see js/social.js and api/crew.js)  */
 /* ------------------------------------------------------------------ */
 
-let social = null;
-let socialState = 'connecting'; // connecting | on | off | error
-let friendCards = [];
-let profileNames = {};
+let crewMembers = []; // cards from the server
+let crewStatus = 'idle'; // idle | loading | on | error
+let crewError = '';
+let pendingInvite = null; // crew code from an invite link
+let busy = false;
 const sceneCache = new Map();
 
 function myCard() {
   return {
-    v: 1,
     name: state.name || '',
     home: state.equipped.home,
     car: state.equipped.car,
@@ -526,9 +529,120 @@ function myCard() {
     task: state.clockedInAt ? state.task || '' : '',
   };
 }
-function publishMe() {
-  if (social && social.canWrite) social.publish(myCard());
+
+function gotCrew(crew) {
+  crewMembers = crew.members || [];
+  crewStatus = 'on';
+  crewError = '';
+  if (!crewMembers.some((m) => m.id === state.player.id)) lostCrew('You’re no longer in that crew.');
 }
+
+function lostCrew(message) {
+  state.crew = null;
+  crewMembers = [];
+  crewStatus = 'idle';
+  lastPublished = '';
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+  if (message) toast(message);
+}
+
+function handleCrewError(e) {
+  if (e.status === 404 || e.status === 403) { lostCrew(e.message); }
+  else { crewStatus = crewMembers.length ? 'on' : 'error'; crewError = e.message; }
+}
+
+async function refreshCrew() {
+  if (!state.crew || !friendsAvailable()) return;
+  if (!crewMembers.length) { crewStatus = 'loading'; if (view === 'friends') renderFriends(); }
+  try { gotCrew(await crewApi.get(state.crew)); }
+  catch (e) { handleCrewError(e); }
+  if (view === 'friends') renderFriends();
+}
+
+// Publish my card when it changes (debounced; skipped when nothing changed).
+let lastPublished = '';
+let publishTimer = null;
+function publishMe() {
+  if (!state.crew || !friendsAvailable()) return;
+  clearTimeout(publishTimer);
+  publishTimer = setTimeout(async () => {
+    const card = myCard();
+    const json = JSON.stringify(card);
+    if (json === lastPublished || !state.crew) return;
+    lastPublished = json;
+    try { gotCrew(await crewApi.update(state.player, state.crew, card)); }
+    catch (e) { lastPublished = ''; handleCrewError(e); }
+    if (view === 'friends') renderFriends();
+  }, 800);
+}
+
+function needName() {
+  const input = $('#crew-name');
+  const name = input.value.trim().slice(0, 24);
+  if (!name) { input.focus(); toast('Add your name first, so friends know it’s you.'); return null; }
+  state.name = name;
+  return name;
+}
+
+async function crewAction(fn, done) {
+  if (busy) return;
+  busy = true;
+  $$('#crew-create, #crew-join').forEach((b) => (b.disabled = true));
+  try {
+    const crew = await fn();
+    state.crew = crew.code;
+    pendingInvite = null;
+    save();
+    gotCrew(crew);
+    lastPublished = JSON.stringify(myCard());
+    toast(done(crew.code));
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    busy = false;
+    $$('#crew-create, #crew-join').forEach((b) => (b.disabled = false));
+    renderAll();
+  }
+}
+
+$('#crew-create').addEventListener('click', () => {
+  if (!needName()) return;
+  crewAction(() => crewApi.create(state.player, myCard()), (c) => `Crew ${prettyCode(c)} is ready. Copy the invite link and send it to a friend.`);
+});
+
+$('#crew-join-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const code = normCode($('#crew-code').value);
+  if (!code) { $('#crew-code').focus(); toast('Crew codes are 6 letters and numbers, like K7M-PQ2.'); return; }
+  if (!needName()) return;
+  crewAction(() => crewApi.join(state.player, code, myCard()), (c) => `You joined crew ${prettyCode(c)}.`);
+});
+
+$('#crew-copy').addEventListener('click', async () => {
+  const link = `${location.origin}${location.pathname}#join-${state.crew}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('Invite link copied. Send it to a friend.');
+  } catch {
+    toast(`Send this link to a friend: ${link}`);
+  }
+});
+
+$('#crew-leave').addEventListener('click', async () => {
+  if (!(await ask(`Leave crew ${prettyCode(state.crew)}? You can rejoin later with the code.`, 'Leave crew'))) return;
+  const code = state.crew;
+  try { await crewApi.leave(state.player, code); } catch {}
+  lostCrew();
+  toast(`You left crew ${prettyCode(code)}.`);
+  renderAll();
+});
+
+$('#nickname').addEventListener('change', (e) => {
+  state.name = e.target.value.trim().slice(0, 24);
+  save();
+  renderAll();
+  toast(state.name ? `Friends will see you as ${state.name}.` : 'Name cleared.');
+});
 
 const liveWeekHours = (c) => {
   const wk = startOfWeek();
@@ -544,32 +658,59 @@ function friendScene(c) {
 }
 
 function renderFriends() {
-  $('#nickname').value = document.activeElement === $('#nickname') ? $('#nickname').value : state.name || '';
   const box = $('#friends');
-  if (socialState !== 'on') {
-    $('#friends-me').hidden = socialState === 'connecting';
-    box.innerHTML = socialState === 'connecting'
-      ? `<p class="empty">Looking for your friends…</p>`
-      : `<div class="panel empty-panel">
-          <h2>Friends need the shared page</h2>
-          <p class="muted">Friends works on the cLOCK IN page on claude.ai. Share that page with a friend as an Editor. When they open it, their place shows up here, live.</p>
-        </div>`;
+  const inCrew = !!state.crew;
+  $('#crew-start').hidden = inCrew || !friendsAvailable();
+  $('#crew-bar').hidden = !inCrew || !friendsAvailable();
+
+  if (!friendsAvailable()) {
+    $('#friends-sub').textContent = 'See your crew’s places and who’s on the clock right now.';
+    box.innerHTML = `<div class="panel empty-panel"><h2>Friends works on the live site</h2>
+      <p class="muted">Open cLOCK IN from its Vercel address to start or join a crew.</p></div>`;
     return;
   }
-  $('#friends-me').hidden = false;
-  const me = social.me;
-  const byId = new Map(friendCards.map((c) => [c.id, c]));
+
+  if (!inCrew) {
+    const name = $('#crew-name');
+    if (document.activeElement !== name) name.value = state.name || '';
+    const invite = $('#crew-invite');
+    invite.hidden = !pendingInvite;
+    if (pendingInvite) {
+      invite.textContent = `You've been invited to crew ${prettyCode(pendingInvite)}. Add your name and press Join.`;
+      if (!$('#crew-code').value) $('#crew-code').value = prettyCode(pendingInvite);
+    }
+    $('#friends-sub').textContent = 'Start a crew or join a friend’s. Then you’ll see each other’s places and who’s on the clock.';
+    box.innerHTML = '';
+    return;
+  }
+
+  $('#crew-code-label').textContent = prettyCode(state.crew);
+  const nick = $('#nickname');
+  if (document.activeElement !== nick) nick.value = state.name || '';
+
+  if (crewStatus === 'loading' && !crewMembers.length) {
+    box.innerHTML = `<p class="empty">Loading your crew…</p>`;
+    return;
+  }
+  if (crewStatus === 'error' && !crewMembers.length) {
+    box.innerHTML = `<div class="panel empty-panel"><h2>Can’t load your crew</h2><p class="muted">${esc(crewError)}</p>
+      <button class="ghost-btn" type="button" data-retry>Try again</button></div>`;
+    return;
+  }
+
+  const me = state.player.id;
+  const byId = new Map(crewMembers.map((c) => [c.id, c]));
   byId.set(me, { id: me, ...myCard() });
   const cards = [...byId.values()].sort((a, b) => liveWeekHours(b) - liveWeekHours(a));
   $('#friends-sub').textContent = cards.length > 1
-    ? `${cards.length} people on this page, ranked by hours this week.`
-    : 'Just you so far. Share this page with a friend as an Editor and their place shows up here.';
+    ? `${cards.length} people in your crew, ranked by hours this week.`
+    : 'Just you so far. Copy the invite link and send it to a friend.';
   box.innerHTML = cards
     .map((c, i) => {
       const isMe = c.id === me;
-      const name = (isMe ? state.name : c.name) || profileNames[c.id] || (isMe ? 'You' : 'Someone');
+      const name = (isMe ? state.name : c.name) || (isMe ? 'You' : 'Someone');
       const home = homeById(c.home), car = carById(c.car);
-      return `<article class="friend${c.clockedInAt ? ' on' : ''}${isMe ? ' me' : ''}" data-fid="${esc(c.id)}">
+      return `<article class="friend${c.clockedInAt ? ' on' : ''}${isMe ? ' me' : ''}">
         <div class="friend-art"><canvas data-scene="${esc(c.id)}"></canvas><span class="friend-rank">${i + 1}</span></div>
         <div class="friend-body">
           <div class="friend-name"><h3>${esc(name)}</h3>${isMe ? '<span class="tag">You</span>' : ''}</div>
@@ -592,12 +733,14 @@ function renderFriends() {
   tickFriends();
 }
 
+$('#friends').addEventListener('click', (e) => { if (e.target.closest('[data-retry]')) refreshCrew(); });
+
 let friendsView = [];
 function tickFriends() {
   for (const c of friendsView) {
     const st = document.querySelector(`[data-status="${CSS.escape(c.id)}"]`);
     const wk = document.querySelector(`[data-week="${CSS.escape(c.id)}"]`);
-    const card = c.id === social?.me ? { ...c, ...myCard() } : c;
+    const card = c.id === state.player.id ? { ...c, ...myCard() } : c;
     if (st) {
       st.innerHTML = card.clockedInAt
         ? `<span class="pulse on" aria-hidden="true"></span> On the clock ${clock(Date.now() - card.clockedInAt)}${card.task ? `, on ${esc(card.task)}` : ''}`
@@ -606,38 +749,6 @@ function tickFriends() {
     if (wk) wk.textContent = dur(liveWeekHours(card) * HOUR);
   }
 }
-
-async function resolveNames() {
-  if (!social) return;
-  const ids = friendCards.map((c) => c.id).filter((id) => !(id in profileNames));
-  if (!ids.length) return;
-  const got = await social.names(ids);
-  for (const id of ids) profileNames[id] = got[id] || '';
-  if (view === 'friends') renderFriends();
-}
-
-async function startSocial() {
-  social = await connect();
-  if (!social) { socialState = 'off'; if (view === 'friends') renderFriends(); return; }
-  socialState = 'on';
-  if (!state.name) {
-    const n = await social.myName();
-    if (n && !state.name) { state.name = n.split(' ')[0]; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} renderGreeting(); if ($('#check').open) $('#check-name').textContent = state.name; }
-  }
-  social.subscribe(
-    (cards) => { friendCards = cards; resolveNames(); if (view === 'friends') renderFriends(); },
-    () => { socialState = 'error'; if (view === 'friends') renderFriends(); },
-  );
-  publishMe();
-  if (view === 'friends') renderFriends();
-}
-
-$('#nickname').addEventListener('change', (e) => {
-  state.name = e.target.value.trim().slice(0, 24);
-  save();
-  renderFriends();
-  toast(state.name ? `Friends will see you as ${state.name}.` : 'Name cleared.');
-});
 
 /* ------------------------------------------------------------------ */
 /* Greeting, brand, routing                                            */
@@ -675,13 +786,20 @@ function renderAll() {
 
 let view = 'dashboard';
 function route() {
+  const invite = /^#join-([A-Za-z0-9-]{6,7})$/.exec(location.hash);
+  if (invite) {
+    const code = normCode(invite[1]);
+    if (code && code !== state.crew) pendingInvite = code;
+    if (code && state.crew && code !== state.crew) toast(`You're already in crew ${prettyCode(state.crew)}. Leave it first to join ${prettyCode(code)}.`);
+    history.replaceState(null, '', '#friends');
+  }
   const v = (location.hash || '#dashboard').slice(1);
   view = ['dashboard', 'shop', 'shifts', 'friends'].includes(v) ? v : 'dashboard';
   $$('.view').forEach((el) => (el.hidden = el.id !== `view-${view}`));
   $$('.nav a').forEach((a) => a.toggleAttribute('aria-current', a.dataset.view === view));
   if (view === 'shop') renderShop();
   if (view === 'shifts') renderPay();
-  if (view === 'friends') renderFriends();
+  if (view === 'friends') { renderFriends(); refreshCrew(); }
   window.scrollTo(0, 0);
 }
 
@@ -803,13 +921,20 @@ processPaydays();
 save(); // persist any migration
 route();
 renderAll();
-startSocial();
+publishMe();
 if (undeposited().length) openCheck(undeposited()[0]);
 
 setInterval(() => {
   if (state.clockedInAt) renderClock();
-  if (view === 'friends' && socialState === 'on') tickFriends();
+  if (view === 'friends' && state.crew) tickFriends();
 }, 1000);
+// Check on the crew every 15 seconds while the Friends page is open.
+setInterval(() => {
+  if (view === 'friends' && state.crew && document.visibilityState === 'visible') refreshCrew();
+}, 15000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && view === 'friends') refreshCrew();
+});
 setInterval(() => {
   if (processPaydays()) { renderAll(); if (!$('#check').open) openCheck(undeposited()[0]); }
   renderStats();
