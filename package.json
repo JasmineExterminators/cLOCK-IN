@@ -1,0 +1,12 @@
+{
+  "name": "clock-in",
+  "private": true,
+  "type": "module",
+  "description": "Clock in to study. Get paid every Friday. Build a life.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.9.0"
+  }
+}
