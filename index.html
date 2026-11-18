@@ -162,12 +162,46 @@
         <header class="page-head">
           <div>
             <h1 id="friends-title">Friends</h1>
-            <p class="muted" id="friends-sub">Everyone on this cLOCK IN page, ranked by hours this week.</p>
+            <p class="muted" id="friends-sub">See your crew's places and who's on the clock right now.</p>
           </div>
         </header>
-        <div class="friends-me panel" id="friends-me">
-          <label for="nickname">Your name for friends</label>
-          <input id="nickname" type="text" maxlength="24" autocomplete="off" placeholder="Pick a name" />
+
+        <!-- Not in a crew yet -->
+        <div class="crew-start" id="crew-start" hidden>
+          <p class="crew-invite" id="crew-invite" hidden></p>
+          <label class="crew-name">
+            <span>Your name</span>
+            <input id="crew-name" type="text" maxlength="24" autocomplete="off" placeholder="What friends call you" />
+          </label>
+          <div class="crew-options">
+            <div class="panel crew-option">
+              <h2>Start a crew</h2>
+              <p class="muted">You get a code to send your friends. Anyone with it can join.</p>
+              <button class="punch small" id="crew-create" type="button">Start a crew</button>
+            </div>
+            <form class="panel crew-option" id="crew-join-form">
+              <h2>Join a crew</h2>
+              <p class="muted">Got a code from a friend? Enter it here.</p>
+              <div class="crew-join-row">
+                <input id="crew-code" type="text" maxlength="7" autocomplete="off" spellcheck="false" placeholder="ABC-123" aria-label="Crew code" />
+                <button class="punch small" id="crew-join" type="submit">Join</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- In a crew -->
+        <div class="crew-bar panel" id="crew-bar" hidden>
+          <div class="crew-id">
+            <span class="muted">Crew code</span>
+            <strong id="crew-code-label"></strong>
+          </div>
+          <button class="ghost-btn" id="crew-copy" type="button">Copy invite link</button>
+          <label class="crew-nick">
+            <span class="muted">Your name</span>
+            <input id="nickname" type="text" maxlength="24" autocomplete="off" placeholder="Pick a name" />
+          </label>
+          <button class="text-btn" id="crew-leave" type="button">Leave crew</button>
         </div>
         <div class="friends" id="friends"></div>
       </section>

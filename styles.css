@@ -301,13 +301,6 @@ dialog[open] .stub-paper { animation: print 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)
 .city .muted { font-size: 13px; }
 
 /* ---------- friends ---------- */
-.friends-me { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding: 14px 18px; }
-.friends-me label { color: var(--muted); font-size: 14px; white-space: nowrap; }
-.friends-me input {
-  flex: 1; max-width: 280px; padding: 9px 12px; background: var(--night); color: var(--ink);
-  border: 1px solid var(--line); border-radius: var(--r-ctl); font: inherit;
-}
-.friends-me input:focus { outline: none; border-color: var(--lamp); }
 .friends { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
 .friend { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-tile); overflow: hidden; display: grid; }
 .friend.on { border-color: rgba(242, 181, 74, 0.45); }
@@ -330,6 +323,31 @@ dialog[open] .stub-paper { animation: print 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)
 .friend-stats dt { font-size: 12px; color: var(--muted); }
 .friend-stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty-panel { display: grid; gap: 8px; max-width: 560px; }
+
+/* ---------- crews ---------- */
+.text-btn { background: none; border: 0; padding: 6px 4px; color: var(--muted); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+.text-btn:hover { color: var(--brick); }
+.crew-start { display: grid; gap: 16px; max-width: 860px; }
+.crew-invite { padding: 12px 16px; border-radius: var(--r-panel); border: 1px solid rgba(242, 181, 74, 0.4); background: var(--lamp-soft); color: var(--ink); }
+.crew-name { display: grid; gap: 6px; max-width: 320px; }
+.crew-name span { color: var(--muted); font-size: 14px; }
+.crew-name input, .crew-join-row input, .crew-nick input {
+  padding: 10px 12px; background: var(--night); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-ctl); font: inherit;
+}
+.crew-name input:focus, .crew-join-row input:focus, .crew-nick input:focus { outline: none; border-color: var(--lamp); }
+.crew-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.crew-option { display: grid; gap: 10px; align-content: start; margin: 0; }
+.crew-option .punch { margin-top: 6px; }
+.crew-join-row { display: flex; gap: 8px; margin-top: 6px; }
+.crew-join-row input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+.crew-join-row .punch { width: auto; padding: 10px 20px; }
+.crew-bar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; padding: 14px 18px; }
+.crew-id { display: grid; }
+.crew-id .muted, .crew-nick .muted { font-size: 12px; }
+.crew-id strong { font-size: 22px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+.crew-nick { display: grid; gap: 2px; margin-left: auto; }
+.crew-nick input { padding: 7px 10px; width: 200px; }
 
 /* ---------- pay page ---------- */
 .pay-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 16px; align-items: start; }
@@ -421,8 +439,10 @@ dialog[open] .check { animation: slidein 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); }
   .check-banner { flex-direction: column; align-items: stretch; }
   .check-pay { grid-template-columns: 1fr auto; }
   .check-label { grid-column: 1 / -1; max-width: none; }
-  .friends-me { flex-direction: column; align-items: stretch; }
-  .friends-me input { max-width: none; }
+  .crew-options { grid-template-columns: 1fr; }
+  .crew-name { max-width: none; }
+  .crew-nick { margin-left: 0; width: 100%; }
+  .crew-nick input { width: 100%; }
   .tile-hood { left: 8px; top: 8px; font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
