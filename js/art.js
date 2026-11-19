@@ -359,6 +359,79 @@ export function drawHome(iso, home, X, Y, Z, light) {
       acUnit(iso, X + 5, Y + 2, Z + H);
       return {};
     }
+    case 'suite': {
+      // Brick dorm with paired suite windows and a lit common-room band on each floor.
+      const A = 11, B = 8, H = 17;
+      const common = (u, v) => {
+        const fv = (v - 4) % 6;
+        if (v < 4 || v >= H - 1 || u < 1 || u > A - 2) return null;
+        if (u >= 4 && u <= 6 && fv >= 1 && fv <= 3) return hash(Math.floor((v - 4) / 6), s, 5) < light + 0.25 ? (fv === 3 ? C.litHi : C.lit) : C.glassDark;
+        return null;
+      };
+      iso.box(X, Y, Z, A, B, H, {
+        top: hex('#7f7670'),
+        left: wall,
+        right: shade(wall, -0.26),
+        leftFn: layer(common,
+          windows(A, H, { seed: s, litRatio: light, period: 4, floorH: 6, winH: 3, winW: 2, groundFloor: 4 }),
+          (u, v) => (u >= 4 && u <= 6 && v < 4 ? (v === 3 ? hex('#3b2e26') : u === 5 ? hex('#5a4535') : hex('#e8e0d2')) : null),
+          (u, v) => ((u + Math.floor(v / 2)) % 4 === 0 && v % 2 === 0 ? shade(wall, -0.09) : null)),
+        rightFn: layer(windows(B, H, { seed: s + 1, litRatio: light, period: 3, floorH: 6, winH: 3, groundFloor: 4 }),
+          (u, v) => ((u + Math.floor(v / 2)) % 4 === 1 && v % 2 === 0 ? shade(wall, -0.34) : null)),
+        topFn: roofMoss(0.15, s),
+      });
+      acUnit(iso, X + 2, Y + 2, Z + H);
+      acUnit(iso, X + 7, Y + 4, Z + H);
+      return {};
+    }
+    case 'dormstudio': {
+      // Newer dorm: pale panels, narrow single-room windows, teal accent fins, a rooftop terrace.
+      const A = 9, B = 8, H = 22;
+      const fin = hex('#4f7480');
+      iso.box(X, Y, Z, A, B, H, {
+        top: hex('#9aa0a3'),
+        left: wall,
+        right: shade(wall, -0.24),
+        leftFn: layer(
+          (u, v) => ((u === 0 || u === A - 1) && v > 3 ? fin : null),
+          (u, v) => (v < 4 && u >= 1 && u <= A - 2 ? (v === 3 ? hex('#5f6a70') : u === 4 ? hex('#2f3a40') : light > 0.4 ? C.litHi : hex('#6a7a84')) : null),
+          windows(A, H, { seed: s, litRatio: light, period: 2, floorH: 4, winH: 2, groundFloor: 4, sill: 1 })),
+        rightFn: layer((u, v) => (u === B - 1 && v > 3 ? shade(fin, -0.25) : null),
+          windows(B, H, { seed: s + 2, litRatio: light, period: 2, floorH: 4, winH: 2, groundFloor: 4, sill: 1 })),
+        topFn: roofMoss(0.1, s),
+      });
+      // terrace railing and a planter
+      iso.box(X + 1, Y + 1, Z + H, 5, 4, 1, { top: hex('#8a6a4c'), topFn: (wx) => (Math.floor(wx) % 2 ? hex('#7a5b3f') : null) });
+      const [px, py] = iso.p(X + 2, Y + 5, Z + H + 1);
+      for (let i = 0; i < 5; i++) iso.pix.set(px + i, py - (i % 2), moss(hash(i, s, 2)));
+      return {};
+    }
+    case 'sharedapt': {
+      // Three-story frame house split into apartments: siding, a front porch, and a stepped roof.
+      const A = 10, B = 9, H = 14;
+      const siding = (u, v) => (v % 2 === 0 ? shade(wall, -0.06) : null);
+      iso.box(X, Y, Z, A, B, H, {
+        top: hex('#5b4f4a'),
+        left: wall,
+        right: shade(wall, -0.24),
+        leftFn: layer(
+          (u, v) => (u >= 6 && u <= 7 && v < 4 ? (v === 3 ? hex('#3a302a') : hex('#7a3b2e')) : null),
+          windows(A, H, { seed: s, litRatio: light, period: 3, floorH: 4, winH: 2, groundFloor: 0, sill: 1 }),
+          siding),
+        rightFn: layer(windows(B, H, { seed: s + 3, litRatio: light, period: 3, floorH: 4, winH: 2, groundFloor: 0, sill: 1 }),
+          (u, v) => (v % 2 === 0 ? shade(wall, -0.3) : null)),
+      });
+      // stepped roof
+      const roof = hex('#5b4f4a');
+      iso.box(X + 1, Y, Z + H, A - 2, B, 2, { top: roof, left: shade(roof, 0.05), right: shade(roof, -0.2) });
+      iso.box(X + 3, Y, Z + H + 2, A - 6, B, 2, { top: shade(roof, -0.05), left: shade(roof, 0.05), right: shade(roof, -0.2),
+        leftFn: (u, v) => (u === 1 && v === 0 ? (light > 0.4 ? C.lit : C.glassDark) : null) });
+      // porch with posts and a roof
+      iso.box(X + 1, Y + B, Z, A - 2, 3, 1, { top: hex('#8a6a4c'), left: hex('#6d5038'), right: hex('#5a4230') });
+      for (const px of [X + 1, X + A - 2]) iso.box(px, Y + B + 2, Z + 1, 1, 1, 4, { top: hex('#e8e0d2'), left: hex('#e8e0d2'), right: hex('#c9c1b3') });
+      iso.box(X + 1, Y + B, Z + 5, A - 2, 3, 1, { top: hex('#6f625b'), left: hex('#e8e0d2'), right: hex('#c9c1b3') });
+      return {};
+    }
     case 'studio': {
       const A = 10, B = 9, H = 19;
       iso.box(X, Y, Z, A, B, H, {
@@ -553,7 +626,7 @@ export function renderHomeTile(home) {
     right: shade(C.dirt, -0.25),
     rim: false,
   });
-  const fit = { penthouse: [7, 5], mansion: [1, 2], house: [2, 4], walkup: [6, 6], studio: [7, 6], dorm: [8, 7], rowhouse: [4, 6], townhouse: [6, 6] }[home.art] || [4, 4];
+  const fit = { penthouse: [7, 5], mansion: [1, 2], house: [2, 4], walkup: [6, 6], studio: [7, 6], dorm: [8, 7], suite: [7, 7], dormstudio: [8, 7], sharedapt: [7, 4], rowhouse: [4, 6], townhouse: [6, 6] }[home.art] || [4, 4];
   const extras = drawHome(iso, home, fit[0], fit[1], 2, 0.35);
   if (extras.trees) for (const [x, y, r] of extras.trees) drawTree(iso, Math.min(x, a - 2), Math.min(y, b - 2), 2, r - 1, x);
   return P;
