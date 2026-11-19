@@ -54,7 +54,7 @@ function cleanShift(s = {}) {
  *   listMilestones(code), getMilestone(id), createMilestone(m), voteMilestone(id, userId, amount),
  *   completeMilestone(id, bonus), deleteMilestone(id), setCongrats(id, userId, on),
  *   listReports(code), getReport(id), findOpenReport(code, target, shiftId), createReport(r),
- *   voteReport(id, userId, agree), setReportStatus(id, status) }
+ *   voteReport(id, userId, agree), setReportStatus(id, status), deleteReport(id) }
  */
 export async function handleBoard(store, user, method, query = {}, body = {}, now = Date.now()) {
   if (!user) return fail(401, 'signed_out', 'Sign in to use the crew board.');
@@ -129,10 +129,15 @@ export async function handleBoard(store, user, method, query = {}, body = {}, no
     if (status !== 'open') await store.setReportStatus(r.id, status);
     return ok(publicReport({ ...fresh, status }));
   }
-  if (a === 'vote' || a === 'accept') {
+  if (a === 'vote' || a === 'accept' || a === 'retract') {
     const r = await store.getReport(String(body.id || ''));
     if (!r || r.crewCode !== code) return fail(404, 'no_report', 'That report is gone.');
     if (r.status !== 'open') return fail(409, 'closed', 'That report is already decided.');
+    if (a === 'retract') {
+      if (r.reporter !== user.id) return fail(403, 'not_yours', 'Only the person who filed a report can retract it.');
+      await store.deleteReport(r.id);
+      return ok({ removed: r.id });
+    }
     if (a === 'accept') {
       if (r.target !== user.id) return fail(403, 'not_yours', 'Only the reported person can accept a report.');
       await store.setReportStatus(r.id, 'upheld');

@@ -71,6 +71,21 @@ test('reports: crew majority (at least two) upholds; the reported person can acc
   assert.equal((await post(s, D, { action: 'accept', id: r3.id })).json.status, 'upheld');
 });
 
+test('reports: the reporter can retract an open report, nobody else can', async () => {
+  const s = memoryBoard({ CREW01: ['a', 'b', 'c'] });
+  const shift = { id: 's1', start: NOW - 12 * H, end: NOW - H, task: 'reading' };
+  const r = (await post(s, A, { action: 'report', target: 'b', shift, capHours: 2 })).json;
+  assert.equal((await post(s, B, { action: 'retract', id: r.id })).status, 403, 'not the reported person');
+  assert.equal((await post(s, C, { action: 'retract', id: r.id })).status, 403, 'not another crewmate');
+  assert.deepEqual((await post(s, A, { action: 'retract', id: r.id })).json, { removed: r.id });
+  assert.deepEqual((await handleBoard(s, A, 'GET', { crew: 'CREW01' })).json.reports, []);
+  assert.equal((await post(s, A, { action: 'report', target: 'b', shift, capHours: 2 })).status, 200, 'the shift can be reported again');
+
+  const r2 = (await post(s, A, { action: 'report', target: 'c', shift: { ...shift, id: 's2' }, capHours: 2 })).json;
+  await post(s, C, { action: 'accept', id: r2.id });
+  assert.equal((await post(s, A, { action: 'retract', id: r2.id })).status, 409, 'decided reports stay');
+});
+
 test('reports: in a crew of two, only accepting decides it', () => {
   assert.equal(reportStatus({ status: 'open', votes: [{ userId: 'a', agree: true }] }, 2), 'open');
   assert.equal(reportStatus({ status: 'open', votes: [{ userId: 'a', agree: true }, { userId: 'c', agree: true }] }, 3), 'upheld');

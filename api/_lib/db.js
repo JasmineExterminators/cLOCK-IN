@@ -240,4 +240,5 @@ export const boardStore = {
       on conflict (report_id, user_id) do update set agree = excluded.agree`;
   },
   async setReportStatus(id, status) { const s = await db(); await s`update public.reports set status = ${status} where id = ${id}`; },
+  async deleteReport(id) { const s = await db(); await s`delete from public.reports where id = ${id}`; },
 };

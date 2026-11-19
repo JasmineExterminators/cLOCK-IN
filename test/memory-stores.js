@@ -87,5 +87,6 @@ export function memoryBoard(crews = {}) {
     async createReport(r) { reports.set(r.id, { ...r, votes: new Map() }); },
     async voteReport(id, userId, agree) { reports.get(id).votes.set(userId, agree); },
     async setReportStatus(id, status) { reports.get(id).status = status; },
+    async deleteReport(id) { reports.delete(id); },
   };
 }
