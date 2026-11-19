@@ -3,7 +3,7 @@ import { renderScene, renderCarSide, renderHomeTile } from './art.js';
 import { Pix, hex } from './pixel.js';
 import { dotText } from './glyphs.js';
 import { crewApi, normCode, prettyCode } from './social.js';
-import { cloudAvailable, currentUser, signIn, signUp, signOutLocal, cloudSave, getMeta, setMeta, mergeSaves } from './cloud.js';
+import { cloudAvailable, currentUser, signIn, signUp, signOutLocal, cloudSave, getMeta, setMeta, mergeSaves, api } from './cloud.js';
 
 /* ------------------------------------------------------------------ */
 /* Time helpers                                                        */
@@ -45,6 +45,7 @@ const fresh = () => ({
   lastPayday: prevPayday(Date.now()),
   crews: [], // codes of the crews I'm in, e.g. ['K7MPQ2']
   activeCrew: null, // the crew shown on the Friends page
+  paydayEmails: true, // email me when my paycheck is ready
   owner: null, // account id this save belongs to (null = made before signing in)
 });
 
@@ -1063,7 +1064,11 @@ function renderAccount() {
   pay.hidden = !live;
   if (live) {
     pay.innerHTML = user
-      ? `<div><h2>Account</h2><p class="muted">Signed in as ${esc(user.email)}. <span class="acct-sync ${syncStatus}"><i aria-hidden="true"></i>${syncLabel()}</span></p></div>
+      ? `<div><h2>Account</h2><p class="muted">Signed in as ${esc(user.email)}. <span class="acct-sync ${syncStatus}"><i aria-hidden="true"></i>${syncLabel()}</span></p>
+           <div class="email-row">
+             <label class="toggle"><input type="checkbox" id="payday-emails" ${state.paydayEmails !== false ? 'checked' : ''} /><span>Email me on payday</span></label>
+             <button class="text-btn" type="button" data-test-email>Send me a test email</button>
+           </div></div>
          <button class="ghost-btn" type="button" data-signout>Sign out</button>`
       : `<div><h2>Account</h2><p class="muted">Your progress only lives in this browser. Create an account to back it up and use it on other devices.</p></div>
          <button class="punch small" type="button" data-signin>Back up my progress</button>`;
@@ -1074,6 +1079,26 @@ document.addEventListener('click', (e) => {
   const signin = e.target.closest('[data-signin], [data-signup]');
   if (signin) { openAccount(signin.hasAttribute('data-signup') || hasProgress(state) ? 'signup' : 'signin'); return; }
   if (e.target.closest('[data-signout]')) signOut();
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'payday-emails') return;
+  state.paydayEmails = e.target.checked;
+  save();
+  toast(state.paydayEmails ? `You’ll get an email at ${currentUser()?.email} every payday.` : 'Payday emails are off.');
+});
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-test-email]');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/api/payday', { action: 'test' });
+    toast(`Test email sent to ${r.to}. It can take a minute to arrive.`);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 window.addEventListener('online', () => { if (dirty) pushSave(); });
