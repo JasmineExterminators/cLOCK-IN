@@ -172,7 +172,9 @@
           </div>
         </header>
 
-        <!-- Not in a crew yet -->
+        <div class="crew-tabs" id="crew-tabs" role="toolbar" aria-label="Your crews" hidden></div>
+
+        <!-- Start or join a crew -->
         <div class="crew-start" id="crew-start" hidden>
           <p class="crew-invite" id="crew-invite" hidden></p>
           <label class="crew-name">
@@ -183,6 +185,7 @@
             <div class="panel crew-option">
               <h2>Start a crew</h2>
               <p class="muted">You get a code to send your friends. Anyone with it can join.</p>
+              <input id="crew-new-name" type="text" maxlength="32" autocomplete="off" placeholder="Crew name, like Roommates" aria-label="Crew name" />
               <button class="punch small" id="crew-create" type="button">Start a crew</button>
             </div>
             <form class="panel crew-option" id="crew-join-form">
@@ -194,13 +197,14 @@
               </div>
             </form>
           </div>
+          <button class="text-btn" id="crew-cancel" type="button" hidden>Back to my crews</button>
         </div>
 
         <!-- In a crew -->
         <div class="crew-bar panel" id="crew-bar" hidden>
           <div class="crew-id">
-            <span class="muted">Crew code</span>
-            <strong id="crew-code-label"></strong>
+            <input id="crew-title" type="text" maxlength="32" autocomplete="off" aria-label="Crew name" />
+            <span class="muted">Code <b id="crew-code-label"></b></span>
           </div>
           <button class="ghost-btn" id="crew-copy" type="button">Copy invite link</button>
           <label class="crew-nick">
@@ -217,9 +221,24 @@
         <header class="page-head">
           <div>
             <h1 id="shifts-title">Pay</h1>
-            <p class="muted" id="shifts-summary"></p>
+            <p class="muted">Your bank, every shift, and every paycheck.</p>
           </div>
         </header>
+        <section class="bank" aria-label="Bank">
+          <div class="bank-main">
+            <span class="bank-label">Bank balance</span>
+            <strong class="bank-amount" data-bind="balance">$0.00</strong>
+            <div class="bank-waiting" id="bank-waiting" hidden>
+              <span id="bank-waiting-text"></span>
+              <button class="punch small" type="button" id="bank-deposit">Deposit</button>
+            </div>
+          </div>
+          <dl class="bank-stats">
+            <div><dt>This week's pay</dt><dd id="bank-pending">$0.00</dd></div>
+            <div><dt>Next payday</dt><dd id="bank-payday"></dd></div>
+            <div><dt>Lifetime pay</dt><dd id="bank-lifetime">$0.00</dd></div>
+          </dl>
+        </section>
         <div class="panel account-panel" id="account-panel" hidden></div>
         <div class="pay-grid">
           <div class="panel">

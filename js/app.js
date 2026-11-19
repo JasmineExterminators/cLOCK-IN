@@ -43,7 +43,8 @@ const fresh = () => ({
   owned: { car: ['bike'], home: ['pgh-dorm'] },
   equipped: { car: 'bike', home: 'pgh-dorm' },
   lastPayday: prevPayday(Date.now()),
-  crew: null, // crew code, e.g. 'K7MPQ2'
+  crews: [], // codes of the crews I'm in, e.g. ['K7MPQ2']
+  activeCrew: null, // the crew shown on the Friends page
   owner: null, // account id this save belongs to (null = made before signing in)
 });
 
@@ -66,6 +67,9 @@ function migrate(s) {
   if (!s.owned.home.includes(s.equipped.home)) s.equipped.home = 'pgh-dorm';
   if (!s.owned.car.includes(s.equipped.car)) s.equipped.car = 'bike';
   delete s.player; // old friends id, replaced by accounts
+  if (s.crew) { s.crews = [...new Set([...(s.crews || []), s.crew])]; s.activeCrew = s.activeCrew || s.crew; }
+  delete s.crew; // one crew became a list of crews
+  if (!Array.isArray(s.crews)) s.crews = [];
   return s;
 }
 
@@ -316,6 +320,7 @@ $('#check').addEventListener('close', () => {
   checkOpenNo = null;
 });
 $('#check-banner-open').addEventListener('click', () => openCheck(undeposited()[0]));
+$('#bank-deposit').addEventListener('click', () => openCheck(undeposited()[0]));
 
 
 /* ------------------------------------------------------------------ */
@@ -434,7 +439,17 @@ function renderPay() {
     groups.get(k).push(s);
   }
   const lifetime = state.checks.reduce((a, c) => a + c.gross, 0);
-  $('#shifts-summary').textContent = `${usd(pendingPay())} pending for this week. ${paydayLabel()}. Lifetime pay ${usd(lifetime)}.`;
+  $('#bank-pending').textContent = usd(pendingPay());
+  $('#bank-payday').textContent = paydayLabel(true).replace(/^Payday /, '');
+  $('#bank-lifetime').textContent = usd(lifetime);
+  const waiting = undeposited();
+  $('#bank-waiting').hidden = !waiting.length;
+  if (waiting.length) {
+    const sum = round2(waiting.reduce((a, c) => a + c.gross, 0));
+    $('#bank-waiting-text').textContent = waiting.length === 1
+      ? `Paycheck for ${usd(sum)} waiting to be deposited.`
+      : `${waiting.length} paychecks, ${usd(sum)} in total, waiting to be deposited.`;
+  }
   $('#shifts-count').textContent = `${state.sessions.length} total, ${totalHours().toFixed(1)}h`;
   $('#shift-days').innerHTML = groups.size
     ? [...groups.values()]
@@ -514,12 +529,17 @@ function renderShop() {
 /* Friends (crews on the Vercel API, see js/social.js and api/crew.js)  */
 /* ------------------------------------------------------------------ */
 
-let crewMembers = []; // cards from the server
-let crewStatus = 'idle'; // idle | loading | on | error
+let crewInfo = new Map(); // code -> { name, size } for every crew I'm in
+const crewData = new Map(); // code -> { name, members } for crews I've opened
+let crewStatus = 'idle'; // idle | loading | on | error (for the crew on screen)
 let crewError = '';
 let pendingInvite = null; // crew code from an invite link
+let addingCrew = false; // showing "start or join" while already in a crew
 let busy = false;
 const sceneCache = new Map();
+
+const activeCrew = () => (state.crews.includes(state.activeCrew) ? state.activeCrew : state.crews[0] || null);
+const crewLabel = (code) => crewInfo.get(code)?.name || crewData.get(code)?.name || `Crew ${prettyCode(code)}`;
 
 function myCard() {
   return {
@@ -535,49 +555,74 @@ function myCard() {
   };
 }
 
-function gotCrew(crew) {
-  crewMembers = crew.members || [];
+function gotCrew(code, crew) {
+  const members = crew.members || [];
+  crewData.set(code, { name: crew.name || '', members });
+  crewInfo.set(code, { name: crew.name || '', size: members.length });
   crewStatus = 'on';
   crewError = '';
-  if (currentUser() && !crewMembers.some((m) => m.id === currentUser().id)) lostCrew('You’re no longer in that crew.');
+  if (currentUser() && !members.some((m) => m.id === currentUser().id)) lostCrew(code, `You’re no longer in ${crewLabel(code)}.`);
 }
 
-function lostCrew(message) {
-  state.crew = null;
-  crewMembers = [];
+function lostCrew(code, message) {
+  state.crews = state.crews.filter((c) => c !== code);
+  if (state.activeCrew === code) state.activeCrew = state.crews[0] || null;
+  crewData.delete(code);
+  crewInfo.delete(code);
   crewStatus = 'idle';
-  lastPublished = '';
   save();
   if (message) toast(message);
 }
 
-function handleCrewError(e) {
-  if (e.status === 404 || e.status === 403) { lostCrew(e.message); }
-  else { crewStatus = crewMembers.length ? 'on' : 'error'; crewError = e.message; }
+function handleCrewError(code, e) {
+  if (e.status === 404 || e.status === 403) lostCrew(code, e.message);
+  else { crewStatus = crewData.has(code) ? 'on' : 'error'; crewError = e.message; }
+}
+
+// The server knows which crews I'm in (another device may have joined or left one).
+async function syncCrewList() {
+  if (!currentUser()) return;
+  try {
+    const { crews } = await crewApi.mine();
+    crewInfo = new Map(crews.map((c) => [c.code, { name: c.name, size: c.size }]));
+    const codes = crews.map((c) => c.code);
+    if (codes.join() !== state.crews.join()) {
+      state.crews = codes;
+      if (!codes.includes(state.activeCrew)) state.activeCrew = codes[0] || null;
+      save();
+    }
+  } catch {}
 }
 
 async function refreshCrew() {
-  if (!state.crew || !currentUser()) return;
-  if (!crewMembers.length) { crewStatus = 'loading'; if (view === 'friends') renderFriends(); }
-  try { gotCrew(await crewApi.get(state.crew)); }
-  catch (e) { handleCrewError(e); }
+  const code = activeCrew();
+  if (!code || !currentUser()) return;
+  if (!crewData.has(code)) { crewStatus = 'loading'; if (view === 'friends') renderFriends(); }
+  try { gotCrew(code, await crewApi.get(code)); }
+  catch (e) { handleCrewError(code, e); }
   if (view === 'friends') renderFriends();
 }
 
-// Publish my card when it changes (debounced; skipped when nothing changed).
+async function openFriends() {
+  renderFriends();
+  await syncCrewList();
+  if (view === 'friends') renderFriends();
+  refreshCrew();
+}
+
+// Publish my card to all my crews when it changes (debounced; skipped when nothing changed).
 let lastPublished = '';
 let publishTimer = null;
 function publishMe() {
-  if (!state.crew || !currentUser()) return;
+  if (!state.crews.length || !currentUser()) return;
   clearTimeout(publishTimer);
   publishTimer = setTimeout(async () => {
     const card = myCard();
     const json = JSON.stringify(card);
-    if (json === lastPublished || !state.crew) return;
+    if (json === lastPublished || !state.crews.length) return;
     lastPublished = json;
-    try { gotCrew(await crewApi.update(state.crew, card)); }
-    catch (e) { lastPublished = ''; handleCrewError(e); }
-    if (view === 'friends') renderFriends();
+    try { await crewApi.updateAll(card); }
+    catch { lastPublished = ''; }
   }, 800);
 }
 
@@ -595,11 +640,15 @@ async function crewAction(fn, done) {
   $$('#crew-create, #crew-join').forEach((b) => (b.disabled = true));
   try {
     const crew = await fn();
-    state.crew = crew.code;
+    if (!state.crews.includes(crew.code)) state.crews.push(crew.code);
+    state.activeCrew = crew.code;
     pendingInvite = null;
+    addingCrew = false;
+    gotCrew(crew.code, crew);
     save();
-    gotCrew(crew);
     lastPublished = JSON.stringify(myCard());
+    $('#crew-new-name').value = '';
+    $('#crew-code').value = '';
     toast(done(crew.code));
   } catch (e) {
     toast(e.message);
@@ -612,7 +661,8 @@ async function crewAction(fn, done) {
 
 $('#crew-create').addEventListener('click', () => {
   if (!needName()) return;
-  crewAction(() => crewApi.create(myCard()), (c) => `Crew ${prettyCode(c)} is ready. Copy the invite link and send it to a friend.`);
+  const name = $('#crew-new-name').value;
+  crewAction(() => crewApi.create(myCard(), name), (c) => `${crewLabel(c)} is ready. Copy the invite link and send it to a friend.`);
 });
 
 $('#crew-join-form').addEventListener('submit', (e) => {
@@ -620,27 +670,63 @@ $('#crew-join-form').addEventListener('submit', (e) => {
   const code = normCode($('#crew-code').value);
   if (!code) { $('#crew-code').focus(); toast('Crew codes are 6 letters and numbers, like K7M-PQ2.'); return; }
   if (!needName()) return;
-  crewAction(() => crewApi.join(code, myCard()), (c) => `You joined crew ${prettyCode(c)}.`);
+  crewAction(() => crewApi.join(code, myCard()), (c) => `You joined ${crewLabel(c)}.`);
+});
+
+$('#crew-cancel').addEventListener('click', () => {
+  addingCrew = false;
+  pendingInvite = null;
+  renderFriends();
+});
+
+$('#crew-tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-crew]');
+  if (tab) {
+    state.activeCrew = tab.dataset.crew;
+    addingCrew = false;
+    pendingInvite = null;
+    saveLocal();
+    renderFriends();
+    refreshCrew();
+  } else if (e.target.closest('[data-add-crew]')) {
+    addingCrew = true;
+    renderFriends();
+    $('#crew-new-name').focus();
+  }
 });
 
 $('#crew-copy').addEventListener('click', async () => {
-  const link = `${location.origin}${location.pathname}#join-${state.crew}`;
+  const link = `${location.origin}${location.pathname}#join-${activeCrew()}`;
   try {
     await navigator.clipboard.writeText(link);
-    toast('Invite link copied. Send it to a friend.');
+    toast(`Invite link for ${crewLabel(activeCrew())} copied. Send it to a friend.`);
   } catch {
     toast(`Send this link to a friend: ${link}`);
   }
 });
 
 $('#crew-leave').addEventListener('click', async () => {
-  if (!(await ask(`Leave crew ${prettyCode(state.crew)}? You can rejoin later with the code.`, 'Leave crew'))) return;
-  const code = state.crew;
+  const code = activeCrew();
+  const label = crewLabel(code);
+  if (!(await ask(`Leave ${label}? You can rejoin later with the code ${prettyCode(code)}.`, 'Leave crew'))) return;
   try { await crewApi.leave(code); } catch {}
-  lostCrew();
-  toast(`You left crew ${prettyCode(code)}.`);
+  lostCrew(code);
+  toast(`You left ${label}.`);
   renderAll();
 });
+
+$('#crew-title').addEventListener('change', async (e) => {
+  const code = activeCrew();
+  const name = e.target.value.trim();
+  try {
+    gotCrew(code, await crewApi.rename(code, name));
+    toast(name ? `Crew renamed to ${name}.` : 'Crew name cleared.');
+  } catch (err) {
+    toast(err.message);
+  }
+  renderFriends();
+});
+$('#crew-title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
 $('#nickname').addEventListener('change', (e) => {
   state.name = e.target.value.trim().slice(0, 24);
@@ -662,12 +748,24 @@ function friendScene(c) {
   return sceneCache.get(key);
 }
 
+function renderCrewTabs(code, adding) {
+  $('#crew-tabs').innerHTML = state.crews
+    .map((c) => {
+      const size = crewInfo.get(c)?.size;
+      return `<button type="button" class="crew-tab" data-crew="${c}" aria-pressed="${!adding && c === code}">
+        <span>${esc(crewLabel(c))}</span>${size ? `<span class="crew-tab-n" aria-label="${size} people">${size}</span>` : ''}</button>`;
+    })
+    .join('') + `<button type="button" class="crew-tab add" data-add-crew aria-pressed="${adding}">+ New crew</button>`;
+}
+
 function renderFriends() {
   const box = $('#friends');
-  const inCrew = !!state.crew;
   const signedIn = !!currentUser();
-  $('#crew-start').hidden = inCrew || !signedIn;
-  $('#crew-bar').hidden = !inCrew || !signedIn;
+  const code = activeCrew();
+  const showStart = signedIn && (!code || addingCrew || !!pendingInvite);
+  $('#crew-tabs').hidden = !signedIn || !state.crews.length;
+  $('#crew-start').hidden = !showStart;
+  $('#crew-bar').hidden = !signedIn || showStart || !code;
 
   if (!cloudAvailable()) {
     $('#friends-sub').textContent = 'See your crew’s places and who’s on the clock right now.';
@@ -683,7 +781,9 @@ function renderFriends() {
     return;
   }
 
-  if (!inCrew) {
+  if (state.crews.length) renderCrewTabs(code, showStart);
+
+  if (showStart) {
     const name = $('#crew-name');
     if (document.activeElement !== name) name.value = state.name || '';
     const invite = $('#crew-invite');
@@ -692,31 +792,38 @@ function renderFriends() {
       invite.textContent = `You've been invited to crew ${prettyCode(pendingInvite)}. Add your name and press Join.`;
       if (!$('#crew-code').value) $('#crew-code').value = prettyCode(pendingInvite);
     }
-    $('#friends-sub').textContent = 'Start a crew or join a friend’s. Then you’ll see each other’s places and who’s on the clock.';
+    $('#crew-cancel').hidden = !state.crews.length;
+    $('#friends-sub').textContent = state.crews.length
+      ? 'Start another crew or join one. Each crew is its own group with its own invite link.'
+      : 'Start a crew or join a friend’s. Then you’ll see each other’s places and who’s on the clock.';
     box.innerHTML = '';
     return;
   }
 
-  $('#crew-code-label').textContent = prettyCode(state.crew);
+  $('#crew-code-label').textContent = prettyCode(code);
+  const title = $('#crew-title');
+  title.placeholder = `Crew ${prettyCode(code)}`;
+  if (document.activeElement !== title) title.value = crewInfo.get(code)?.name || crewData.get(code)?.name || '';
   const nick = $('#nickname');
   if (document.activeElement !== nick) nick.value = state.name || '';
 
-  if (crewStatus === 'loading' && !crewMembers.length) {
-    box.innerHTML = `<p class="empty">Loading your crew…</p>`;
+  const data = crewData.get(code);
+  if (!data && crewStatus === 'error') {
+    box.innerHTML = `<div class="panel empty-panel"><h2>Can’t load this crew</h2><p class="muted">${esc(crewError)}</p>
+      <button class="ghost-btn" type="button" data-retry>Try again</button></div>`;
     return;
   }
-  if (crewStatus === 'error' && !crewMembers.length) {
-    box.innerHTML = `<div class="panel empty-panel"><h2>Can’t load your crew</h2><p class="muted">${esc(crewError)}</p>
-      <button class="ghost-btn" type="button" data-retry>Try again</button></div>`;
+  if (!data) {
+    box.innerHTML = `<p class="empty">Loading ${esc(crewLabel(code))}…</p>`;
     return;
   }
 
   const me = currentUser().id;
-  const byId = new Map(crewMembers.map((c) => [c.id, c]));
+  const byId = new Map(data.members.map((c) => [c.id, c]));
   byId.set(me, { id: me, ...myCard() });
   const cards = [...byId.values()].sort((a, b) => liveWeekHours(b) - liveWeekHours(a));
   $('#friends-sub').textContent = cards.length > 1
-    ? `${cards.length} people in your crew, ranked by hours this week.`
+    ? `${cards.length} people in ${crewLabel(code)}, ranked by hours this week.`
     : 'Just you so far. Copy the invite link and send it to a friend.';
   box.innerHTML = cards
     .map((c, i) => {
@@ -789,7 +896,7 @@ function applyState(next) {
   state.owner = uid;
   saveLocal();
   lastSceneKey = '';
-  crewMembers = [];
+  crewData.clear();
   lastPublished = '';
   processPaydays();
   renderAll();
@@ -904,7 +1011,7 @@ $('#account-form').addEventListener('submit', async (e) => {
     await pullSave();
     if (accountMode === 'signup') toast(`Account created. Your progress is backed up to ${user.email}.`);
     renderAll();
-    if (state.crew) refreshCrew();
+    if (view === 'friends') openFriends();
   } catch (err) {
     $('#account-error').textContent = err.message;
     $('#account-error').hidden = false;
@@ -920,7 +1027,8 @@ async function signOut() {
   signOutLocal();
   state = fresh();
   saveLocal();
-  crewMembers = [];
+  crewData.clear();
+  crewInfo.clear();
   lastSceneKey = '';
   dirty = false;
   setSync('idle');
@@ -1011,8 +1119,8 @@ function route() {
   const invite = /^#join-([A-Za-z0-9-]{6,7})$/.exec(location.hash);
   if (invite) {
     const code = normCode(invite[1]);
-    if (code && code !== state.crew) pendingInvite = code;
-    if (code && state.crew && code !== state.crew) toast(`You're already in crew ${prettyCode(state.crew)}. Leave it first to join ${prettyCode(code)}.`);
+    if (code && state.crews.includes(code)) state.activeCrew = code;
+    else if (code) pendingInvite = code;
     history.replaceState(null, '', '#friends');
   }
   const v = (location.hash || '#dashboard').slice(1);
@@ -1021,7 +1129,7 @@ function route() {
   $$('.nav a').forEach((a) => a.toggleAttribute('aria-current', a.dataset.view === view));
   if (view === 'shop') renderShop();
   if (view === 'shifts') renderPay();
-  if (view === 'friends') { renderFriends(); refreshCrew(); }
+  if (view === 'friends') openFriends();
   window.scrollTo(0, 0);
 }
 
@@ -1148,14 +1256,14 @@ if (undeposited().length) openCheck(undeposited()[0]);
 
 setInterval(() => {
   if (state.clockedInAt) renderClock();
-  if (view === 'friends' && state.crew) tickFriends();
+  if (view === 'friends' && state.crews.length) tickFriends();
 }, 1000);
 // Check on the crew every 15 seconds while the Friends page is open.
 setInterval(() => {
-  if (view === 'friends' && state.crew && document.visibilityState === 'visible') refreshCrew();
+  if (view === 'friends' && state.crews.length && document.visibilityState === 'visible') refreshCrew();
 }, 15000);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && view === 'friends') refreshCrew();
+  if (document.visibilityState === 'visible' && view === 'friends') openFriends();
 });
 setInterval(() => {
   if (processPaydays()) { renderAll(); if (!$('#check').open) openCheck(undeposited()[0]); }

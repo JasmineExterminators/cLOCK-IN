@@ -7,10 +7,10 @@ A punch clock for studying. Clock in when you lock in, get paid by the hour, and
 - **Time clock**: clock in (button, Enter in the task box, or Space), with a live timer and live earnings. Clocking out prints a shift receipt.
 - **Weekly payday**: shifts add to "this week's pay". Every Friday at 5 PM that week's pay becomes a paycheck you open and deposit. Change the day and time with `PAYDAY` in `js/data.js`.
 - **Promotions**: total hours raise your job title and hourly rate (Intern at $15/hr, up to Chief lock-in officer at $65/hr).
-- **Pittsburgh**: seven homes by neighborhood (Oakland dorm up to a Fox Chapel riverfront mansion) and six cars, all with a skyline, river, and yellow bridge behind your place. Chicago and New York show as locked "next cities".
+- **Pittsburgh**: seven homes by neighborhood (Oakland dorm up to a Fox Chapel riverfront mansion) and eight cars (up to the red Vela supercars), all with a skyline, river, and yellow bridge behind your place. Chicago and New York show as locked "next cities".
 - **Accounts**: sign up with email and password and your progress is saved to the cloud after every change, so it follows you to your phone or a new laptop. Without an account the app still works, saved only in that browser.
-- **Friends**: start a crew or join one with a 6-character code or invite link (needs an account). Everyone in the crew sees each other's places, hours this week, and who's on the clock right now (with what they're working on).
-- **Pay page**: every shift (pending or paid) and every paycheck. Removing a shift takes its pay back out.
+- **Friends**: start or join crews with a 6-character code or invite link (needs an account). You can be in up to 10 crews, each with a name any member can change, and switch between them with tabs. Everyone in a crew sees each other's places, hours this week, and who's on the clock right now (with what they're working on).
+- **Pay page**: your bank balance up top (with this week's pay, next payday and lifetime pay), then every shift and every paycheck. Removing a shift takes its pay back out.
 - **Prototype tools** (bottom of Pay): add a test shift, run payday now, add money, reset.
 
 ## Where data lives
@@ -19,7 +19,7 @@ The database is Supabase (Postgres), connected to the Vercel project through the
 
 - **Accounts** are Supabase Auth users. The browser never talks to Supabase directly. It calls `/api/auth`, which creates the user (no confirmation email) or signs in and returns a session token.
 - **Saves**: one row per user in `saves`, holding the whole game state as JSON with a version number. Two devices can't silently overwrite each other: a stale write gets the newer save back, the browser merges it (any shifts only one side has are kept) and tries again.
-- **Crews**: `crews` and `crew_members`, one row per member holding the card friends see (name, home, car, hours, clocked-in status).
+- **Crews**: `crews` (code and name) and `crew_members`, one row per person per crew holding the card friends see (name, home, car, hours, clocked-in status). One update refreshes your card in every crew you're in.
 - Every browser also keeps a copy in `localStorage`, so the app works offline and syncs when it's back.
 - The tables are created automatically on first use (`api/_lib/schema.js`). Row-level security is on with no policies, so nothing is readable through Supabase's public API; only the serverless functions, using the service key, touch the data.
 

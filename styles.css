@@ -345,7 +345,6 @@ dialog[open] .stub-paper { animation: print 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)
 .crew-bar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; padding: 14px 18px; }
 .crew-id { display: grid; }
 .crew-id .muted, .crew-nick .muted { font-size: 12px; }
-.crew-id strong { font-size: 22px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
 .crew-nick { display: grid; gap: 2px; margin-left: auto; }
 .crew-nick input { padding: 7px 10px; width: 200px; }
 
@@ -376,6 +375,53 @@ dialog[open] .stub-paper { animation: print 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)
 .account-form input:focus { outline: none; border-color: var(--lamp); }
 .account-error { color: var(--brick); font-size: 14px; }
 .account-foot { display: flex; justify-content: space-between; gap: 8px; }
+
+/* ---------- bank ---------- */
+.bank {
+  display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 24px; align-items: center;
+  margin-bottom: 16px; padding: 22px 24px;
+  background: linear-gradient(135deg, rgba(156, 191, 114, 0.12), rgba(156, 191, 114, 0.02) 60%), var(--panel);
+  border: 1px solid rgba(156, 191, 114, 0.3); border-radius: var(--r-panel);
+}
+.bank-main { display: grid; gap: 2px; }
+.bank-label { color: var(--muted); font-size: 14px; }
+.bank-amount { font-size: 40px; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bank-amount.bump { color: var(--moss); }
+.bank-waiting { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 14px; color: var(--moss); }
+.bank-waiting .punch { width: auto; padding: 7px 14px; font-size: 14px; background: var(--moss); color: #172010; box-shadow: 0 3px 0 #6d8b48; }
+.bank-waiting .punch:hover { background: #abcc83; }
+.bank-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 0; }
+.bank-stats div { display: grid; gap: 2px; padding-left: 16px; border-left: 1px solid var(--line); min-width: 0; }
+.bank-stats dt { font-size: 13px; color: var(--muted); }
+.bank-stats dd { margin: 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bank-pending { color: var(--moss); }
+
+/* ---------- crew tabs ---------- */
+.crew-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.crew-tab {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 260px;
+  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--muted); font-weight: 500; font-size: 14px;
+}
+.crew-tab span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crew-tab:hover { color: var(--ink); background: var(--raised); }
+.crew-tab[aria-pressed='true'] { color: var(--ink); background: var(--raised); border-color: rgba(242, 181, 74, 0.55); }
+.crew-tab-n { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--night); font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
+.crew-tab.add { border-style: dashed; }
+.crew-option input#crew-new-name {
+  padding: 10px 12px; background: var(--night); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-ctl); font: inherit;
+}
+.crew-option input#crew-new-name:focus { outline: none; border-color: var(--lamp); }
+#crew-cancel { justify-self: start; }
+#crew-title {
+  font: 600 20px/1.2 var(--sans); color: var(--ink); background: transparent;
+  border: 1px solid transparent; border-radius: 8px; padding: 2px 6px; margin-left: -7px; width: 240px; max-width: 100%;
+}
+#crew-title:hover { border-color: var(--line); }
+#crew-title:focus { outline: none; border-color: var(--lamp); background: var(--night); }
+#crew-title::placeholder { color: var(--ink); opacity: 0.85; }
+.crew-id .muted b { color: var(--ink); font-weight: 600; letter-spacing: 0.06em; }
 
 /* ---------- pay page ---------- */
 .pay-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 16px; align-items: start; }
@@ -473,6 +519,12 @@ dialog[open] .check { animation: slidein 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); }
   .crew-nick input { width: 100%; }
   .tile-hood { left: 8px; top: 8px; font-size: 11px; }
   .backup-banner, .account-panel { flex-direction: column; align-items: stretch; }
+  .bank { grid-template-columns: 1fr; gap: 16px; padding: 18px; }
+  .bank-amount { font-size: 34px; }
+  .bank-stats { grid-template-columns: 1fr 1fr; }
+  .bank-stats div:last-child { grid-column: 1 / -1; padding-left: 0; border-left: 0; }
+  .bank-stats div:first-child { padding-left: 0; border-left: 0; }
+  .bank-waiting { flex-wrap: wrap; }
   .rail-account { display: none !important; }
 }
 @media (prefers-reduced-motion: reduce) {
