@@ -30,4 +30,13 @@ create table if not exists public.crew_members (
 );
 alter table public.crew_members enable row level security;
 create index if not exists crew_members_user_idx on public.crew_members (user_id);
+
+-- One row per payday email sent, so the job never emails someone twice for the same payday.
+create table if not exists public.payday_emails (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  payday  text not null,
+  sent_at timestamptz not null default now(),
+  primary key (user_id, payday)
+);
+alter table public.payday_emails enable row level security;
 `;

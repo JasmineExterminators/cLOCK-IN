@@ -56,3 +56,12 @@ export function memorySaves() {
     },
   };
 }
+
+export function memoryPayday(recipients = []) {
+  const claimed = new Set();
+  return {
+    async recipients() { return recipients; },
+    async claim(userId, key) { const k = `${userId}|${key}`; if (claimed.has(k)) return false; claimed.add(k); return true; },
+    async unclaim(userId, key) { claimed.delete(`${userId}|${key}`); },
+  };
+}

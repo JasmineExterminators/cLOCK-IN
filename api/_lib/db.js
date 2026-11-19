@@ -135,3 +135,24 @@ export const crewStore = {
     await s`delete from public.crew_members where crew_code = ${code} and user_id = ${userId}`;
   },
 };
+
+/* ---------- payday emails ---------- */
+
+export const paydayStore = {
+  async recipients() {
+    const s = await db();
+    const rows = await s`
+      select s.user_id, u.email, s.data from public.saves s join auth.users u on u.id = s.user_id where u.email is not null`;
+    return rows.map((r) => ({ userId: r.user_id, email: r.email, data: r.data }));
+  },
+  // True if this (user, payday) wasn't claimed yet; claiming it means "we're sending this one".
+  async claim(userId, key) {
+    const s = await db();
+    const rows = await s`insert into public.payday_emails (user_id, payday) values (${userId}, ${key}) on conflict do nothing returning user_id`;
+    return rows.length > 0;
+  },
+  async unclaim(userId, key) {
+    const s = await db();
+    await s`delete from public.payday_emails where user_id = ${userId} and payday = ${key}`;
+  },
+};
