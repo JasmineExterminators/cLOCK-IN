@@ -484,6 +484,26 @@ dialog[open] .stub-paper { animation: print 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)
 .report-shift input { margin-top: 3px; accent-color: var(--lamp); }
 .report-shift span { display: grid; }
 
+/* ---------- milestone bonus rows ---------- */
+.bonus-row {
+  position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+  margin: 10px 2px; padding: 11px 14px;
+  border: 1px solid rgba(242, 181, 74, 0.55); border-radius: 12px;
+  background: linear-gradient(120deg, rgba(242, 181, 74, 0.18), rgba(242, 181, 74, 0.04) 70%);
+}
+.bonus-row + .shift, .shift-list > .bonus-row:first-child + .shift { border-top: 0; }
+.bonus-row::before, .bonus-row::after {
+  content: ''; position: absolute; width: 7px; height: 7px; background: var(--lamp);
+  clip-path: polygon(43% 0, 57% 0, 57% 29%, 71% 29%, 71% 43%, 100% 43%, 100% 57%, 71% 57%, 71% 71%, 57% 71%, 57% 100%, 43% 100%, 43% 71%, 29% 71%, 29% 57%, 0 57%, 0 43%, 29% 43%, 29% 29%, 43% 29%);
+  animation: twinkle 2.6s steps(2, jump-none) infinite;
+}
+.bonus-row::before { top: -4px; left: -4px; }
+.bonus-row::after { bottom: -4px; right: -4px; width: 9px; height: 9px; animation-delay: 1.3s; }
+@keyframes twinkle { 50% { opacity: 0.3; } }
+.bonus-star { width: 18px; height: 18px; fill: var(--lamp); shape-rendering: crispEdges; }
+.bonus-row strong { color: var(--ink); }
+.bonus-row .money-pos { color: var(--lamp); font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+
 /* ---------- pay page ---------- */
 .pay-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 16px; align-items: start; }
 .day h3 { font-size: 14px; }

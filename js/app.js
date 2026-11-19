@@ -49,7 +49,7 @@ const fresh = () => ({
   crews: [], // codes of the crews I'm in, e.g. ['K7MPQ2']
   activeCrew: null, // the crew shown on the Friends page
   paydayEmails: true, // email me when my paycheck is ready
-  bonuses: [], // milestone bonuses: { id, title, amount, paid, checkNo }
+  bonuses: [], // milestone bonuses: { id, title, amount, at, paid, checkNo }
   appliedReports: [], // upheld report ids already applied to my shifts
   owner: null, // account id this save belongs to (null = made before signing in)
 });
@@ -79,6 +79,7 @@ function migrate(s) {
   s.owned.furniture = (s.owned.furniture || []).filter((id) => FURNITURE.some((f) => f.id === id));
   s.pets = (s.pets || []).filter((id) => PETS.some((p) => p.id === id));
   for (const k of ['bonuses', 'appliedReports']) if (!Array.isArray(s[k])) s[k] = [];
+  s.bonuses.forEach((b) => { if (!Number.isFinite(b.at)) b.at = Date.now(); });
   return s;
 }
 
@@ -323,7 +324,7 @@ function openCheck(c) {
   $('#check-amount').textContent = net < 0 ? `−${usd(-net)}` : usd(net);
   $('#check-words').textContent = net < 0 ? `You owe ${checkWords(-net).toLowerCase()}` : checkWords(net);
   const lines = [[`Shifts, ${dur(c.ms)}`, c.gross - (c.bonuses || []).reduce((a, b) => a + b.amount, 0)],
-    ...(c.bonuses || []).map((b) => [`Milestone bonus: ${b.title}`, b.amount]),
+    ...(c.bonuses || []).map((b) => [`${b.title} bonus`, b.amount]),
     ...(c.deductions || []).map((d) => [`${d.label}${d.days ? `, ${d.days} days at ${usd(d.perDay)}` : ''}`, -d.amount])];
   $('#check-lines').innerHTML = (c.deductions?.length || c.bonuses?.length)
     ? lines.map(([l, v]) => `<div><dt>${esc(l)}</dt><dd>${v < 0 ? `−${usd(-v)}` : usd(v)}</dd></div>`).join('')
@@ -463,6 +464,18 @@ function shiftRow(s, removable = false) {
   </li>`;
 }
 
+// A milestone bonus, shown among the shifts on the day it was finished.
+function bonusRow(b) {
+  return `<li class="bonus-row">
+    <svg class="bonus-star" viewBox="0 0 7 7" aria-hidden="true"><path d="M3 0h1v2h1v1h2v1H5v1H4v2H3V5H2V4H0V3h2V2h1z"/></svg>
+    <div class="shift-main">
+      <strong>${esc(b.title)} bonus</strong>
+      <span class="muted">Milestone, priced by your crew${b.paid ? '' : ' <span class="tag">Pending</span>'}</span>
+    </div>
+    <span class="money-pos">+${usd(b.amount)}</span>
+  </li>`;
+}
+
 function renderRecent() {
   const list = sorted().slice(-4).reverse();
   $('#recent').innerHTML = list.length
@@ -475,11 +488,12 @@ function renderRecent() {
 /* ------------------------------------------------------------------ */
 
 function renderPay() {
-  const groups = new Map();
-  for (const s of sorted().reverse()) {
-    const k = dayKey(s.start);
+  const groups = new Map(); // day -> [{ t, shift | bonus }], newest first
+  const entries = [...state.sessions.map((s) => ({ t: s.start, shift: s })), ...state.bonuses.map((b) => ({ t: b.at, bonus: b }))];
+  for (const e of entries.sort((a, b) => b.t - a.t)) {
+    const k = dayKey(e.t);
     if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(s);
+    groups.get(k).push(e);
   }
   const lifetime = state.checks.reduce((a, c) => a + c.gross, 0);
   $('#bank-pending').textContent = usd(pendingPay());
@@ -498,10 +512,10 @@ function renderPay() {
   $('#shift-days').innerHTML = groups.size
     ? [...groups.values()]
         .map((list) => {
-          const ms = list.reduce((a, s) => a + s.end - s.start, 0);
-          const label = new Date(list[0].start).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-          return `<section class="day"><div class="day-head"><h3>${label}</h3><span class="muted">${dur(ms)}</span></div>
-            <ul class="shift-list">${list.map((s) => shiftRow(s, true)).join('')}</ul></section>`;
+          const ms = list.reduce((a, e) => a + (e.shift ? e.shift.end - e.shift.start : 0), 0);
+          const label = new Date(list[0].t).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+          return `<section class="day"><div class="day-head"><h3>${label}</h3><span class="muted">${ms ? dur(ms) : ''}</span></div>
+            <ul class="shift-list">${list.map((e) => (e.shift ? shiftRow(e.shift, true) : bonusRow(e.bonus))).join('')}</ul></section>`;
         })
         .join('')
     : `<p class="empty">Clock in to start your first shift. Each one lands here, then on Friday's paycheck.</p>`;
@@ -673,8 +687,8 @@ const board = initBoard({
     let changed = false;
     for (const m of data.milestones) {
       if (m.userId !== me || !m.doneAt || m.bonus == null || state.bonuses.some((b) => b.id === m.id)) continue;
-      state.bonuses.push({ id: m.id, title: m.title, amount: m.bonus, paid: false });
-      toast(`Milestone bonus: ${usd(m.bonus)} for ${m.title} goes on Friday’s paycheck.`);
+      state.bonuses.push({ id: m.id, title: m.title, amount: m.bonus, at: m.doneAt || Date.now(), paid: false });
+      toast(`${m.title} bonus: ${usd(m.bonus)} goes on Friday’s paycheck.`);
       changed = true;
     }
     for (const r of data.reports) {
