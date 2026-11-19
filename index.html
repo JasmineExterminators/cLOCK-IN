@@ -90,7 +90,13 @@
           </div>
 
           <figure class="panel place">
-            <canvas id="scene" aria-label="Your home and car"></canvas>
+            <div class="scene-wrap">
+              <canvas id="scene" aria-label="Your home and car"></canvas>
+              <div class="seg" role="group" aria-label="View">
+                <button type="button" data-place="out" aria-pressed="true">Outside</button>
+                <button type="button" data-place="in" aria-pressed="false">Inside</button>
+              </div>
+            </div>
             <figcaption>
               <div>
                 <strong id="place-home">Oakland dorm double</strong>
@@ -158,6 +164,8 @@
         <div class="tabs" role="tablist">
           <button role="tab" aria-selected="true" data-tab="homes">Homes</button>
           <button role="tab" aria-selected="false" data-tab="cars">Cars</button>
+          <button role="tab" aria-selected="false" data-tab="furniture">Furniture</button>
+          <button role="tab" aria-selected="false" data-tab="pets">Pets</button>
         </div>
         <div class="tiles" id="tiles"></div>
         <div class="cities" id="cities"></div>
@@ -214,6 +222,21 @@
           <button class="text-btn" id="crew-leave" type="button">Leave crew</button>
         </div>
         <div class="friends" id="friends"></div>
+
+        <div class="board" id="board" hidden>
+          <section class="panel board-panel" aria-labelledby="ms-heading">
+            <div class="panel-head"><h2 id="ms-heading">Milestones</h2><span class="muted">Big assignments, priced by your crew</span></div>
+            <form class="ms-form" id="ms-form">
+              <input id="ms-title" type="text" maxlength="80" autocomplete="off" placeholder="A big assignment, like Malloc lab" aria-label="Milestone" />
+              <button class="punch small" type="submit">Add milestone</button>
+            </form>
+            <ul class="ms-list" id="ms-list"></ul>
+          </section>
+          <section class="panel board-panel" aria-labelledby="report-heading">
+            <div class="panel-head"><h2 id="report-heading">Reports</h2><span class="muted">Shifts that look wrong</span></div>
+            <ul class="ms-list" id="report-list"></ul>
+          </section>
+        </div>
       </section>
 
       <!-- PAY -->
@@ -237,6 +260,7 @@
             <div><dt>This week's pay</dt><dd id="bank-pending">$0.00</dd></div>
             <div><dt>Next payday</dt><dd id="bank-payday"></dd></div>
             <div><dt>Lifetime pay</dt><dd id="bank-lifetime">$0.00</dd></div>
+            <div><dt>Living costs</dt><dd id="bank-costs">$0/day</dd></div>
           </dl>
         </section>
         <div class="panel account-panel" id="account-panel" hidden></div>
@@ -302,6 +326,7 @@
         <span class="check-amount" id="check-amount"></span>
       </div>
       <div class="check-words"><span id="check-words"></span></div>
+      <dl class="check-lines" id="check-lines"></dl>
       <div class="check-bottom">
         <span class="check-memo">Memo <b id="check-memo"></b></span>
         <svg class="check-sign" viewBox="0 0 150 36" aria-hidden="true"><path d="M6 27c6-15 13-21 14-12s-6 15-2 13 9-14 14-15 1 13 6 13 8-12 13-12-2 11 3 11 9-10 13-10 0 9 4 9 10-8 15-8 5 6 10 5 14-5 22-6M34 31c22 1 60-1 104-4" fill="none" stroke="#2d3a5c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -325,6 +350,19 @@
         <button class="text-btn" id="account-switch" type="button">New here? Create an account</button>
         <button class="text-btn" id="account-cancel" type="button">Not now</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Report a shift -->
+  <dialog id="report" class="account-dialog" aria-labelledby="report-title">
+    <form id="report-form" class="account-form">
+      <h2 id="report-title">Report hours</h2>
+      <p class="muted">Pick the shift that looks wrong and say how long it should have been. Your crew votes, and if most agree, it gets shortened.</p>
+      <div class="report-shifts" id="report-shifts"></div>
+      <label><span>Fair length, in hours</span><input id="report-cap" type="number" min="0" max="12" step="0.25" value="2" required /></label>
+      <label><span>Why (optional)</span><input id="report-reason" type="text" maxlength="140" placeholder="Fell asleep on the clock" /></label>
+      <button class="punch small" id="report-submit" type="submit">Send report</button>
+      <div class="account-foot"><span></span><button class="text-btn" id="report-cancel" type="button">Cancel</button></div>
     </form>
   </dialog>
 
