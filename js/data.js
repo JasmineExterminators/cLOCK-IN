@@ -23,10 +23,19 @@ export const CITIES = [
 ];
 
 export const HOMES = [
-  { id: 'pgh-dorm', city: 'pgh', art: 'dorm', name: 'Oakland dorm double', hood: 'Oakland', price: 0,
+  { id: 'pgh-dorm', city: 'pgh', art: 'dorm', name: 'Dorm double, shared bedroom', hood: 'Oakland', price: 0,
     color: '#b9a68c', tile: '#8f8b84', seed: 3,
     blurb: 'Bathroom down the hall, a roommate who snores, the 61C rattling by all night.' },
-  { id: 'pgh-studio', city: 'pgh', art: 'studio', name: 'Oakland studio', hood: 'South Oakland', price: 300,
+  { id: 'pgh-suite', city: 'pgh', art: 'suite', name: 'Dorm suite, shared common room', hood: 'Oakland', price: 120,
+    color: '#a86e55', tile: '#a0937a', seed: 4,
+    blurb: 'Your own bedroom, four suitemates, one couch, and a fridge full of labeled leftovers.' },
+  { id: 'pgh-dorm-studio', city: 'pgh', art: 'dormstudio', name: 'Studio dorm', hood: 'North Oakland', price: 250,
+    color: '#cfcbc1', tile: '#97a5b4', seed: 6,
+    blurb: 'A single with its own kitchenette and bathroom. Nobody else’s alarm clock.' },
+  { id: 'pgh-shared-apt', city: 'pgh', art: 'sharedapt', name: 'Shared apartment, 3 roommates', hood: 'South Oakland', price: 450,
+    color: '#8fa3a8', tile: '#77857c', seed: 8,
+    blurb: 'Off campus at last. Rent split four ways, a porch, and a war over the thermostat.' },
+  { id: 'pgh-studio', city: 'pgh', art: 'studio', name: 'Studio apartment', hood: 'South Oakland', price: 700,
     color: '#d6d0c4', tile: '#77857c', seed: 5,
     blurb: 'Your own door at last, over a noodle shop. You can see the Cathedral of Learning from bed.' },
   { id: 'pgh-rowhouse', city: 'pgh', art: 'rowhouse', name: 'Lawrenceville rowhouse', hood: 'Lawrenceville', price: 900,

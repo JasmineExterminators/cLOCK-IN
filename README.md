@@ -7,9 +7,10 @@ A punch clock for studying. Clock in when you lock in, get paid by the hour, and
 - **Time clock**: clock in (button, Enter in the task box, or Space), with a live timer and live earnings. Clocking out prints a shift receipt.
 - **Weekly payday**: shifts add to "this week's pay". Every Friday at 5 PM that week's pay becomes a paycheck you open and deposit. Change the day and time with `PAYDAY` in `js/data.js`.
 - **Promotions**: total hours raise your job title and hourly rate (Intern at $15/hr, up to Chief lock-in officer at $65/hr).
-- **Pittsburgh**: seven homes by neighborhood (Oakland dorm up to a Fox Chapel riverfront mansion) and eight cars (up to the red Vela supercars), all with a skyline, river, and yellow bridge behind your place. Chicago and New York show as locked "next cities".
+- **Pittsburgh**: eleven homes by neighborhood, from a shared-bedroom dorm through a suite, a studio dorm and a shared apartment, up to a Fox Chapel riverfront mansion, and eight cars (up to the red Vela supercars), all with a skyline, river, and yellow bridge behind your place. Chicago and New York show as locked "next cities".
 - **Accounts**: sign up with email and password and your progress is saved to the cloud after every change, so it follows you to your phone or a new laptop. Without an account the app still works, saved only in that browser.
 - **Friends**: start or join crews with a 6-character code or invite link (needs an account). You can be in up to 10 crews, each with a name any member can change, and switch between them with tabs. Everyone in a crew sees each other's places, hours this week, and who's on the clock right now (with what they're working on).
+- **Payday emails**: every Friday around 5 PM Eastern, anyone with pay waiting gets an email with their paycheck amount. Turn it off, or send yourself a test, from the Pay page.
 - **Pay page**: your bank balance up top (with this week's pay, next payday and lifetime pay), then every shift and every paycheck. Removing a shift takes its pay back out.
 - **Prototype tools** (bottom of Pay): add a test shift, run payday now, add money, reset.
 
@@ -22,6 +23,12 @@ The database is Supabase (Postgres), connected to the Vercel project through the
 - **Crews**: `crews` (code and name) and `crew_members`, one row per person per crew holding the card friends see (name, home, car, hours, clocked-in status). One update refreshes your card in every crew you're in.
 - Every browser also keeps a copy in `localStorage`, so the app works offline and syncs when it's back.
 - The tables are created automatically on first use (`api/_lib/schema.js`). Row-level security is on with no policies, so nothing is readable through Supabase's public API; only the serverless functions, using the service key, touch the data.
+
+**Payday emails** go out through a Gmail account using an app password. A Vercel cron job (`vercel.json`) calls `/api/payday` every Friday at 22:00 UTC (5 PM EST, 6 PM EDT). It reads each save, adds up pay that hasn't been deposited, and records each send in `payday_emails` so nobody gets the same payday twice. Settings in Vercel:
+
+- `GMAIL_USER`: the Gmail address the emails come from
+- `GMAIL_APP_PASSWORD`: an app password for that account (Google Account, Security, 2-Step Verification, App passwords)
+- `CRON_SECRET`: any long random string; Vercel sends it with the cron call so nobody else can trigger the job
 
 Free-tier note: Supabase pauses a free project after 7 days with no activity. Your data stays; un-pause it from the Supabase dashboard.
 
@@ -38,7 +45,7 @@ npx vercel dev      # http://localhost:3000
 
 Without the API, any static server works for everything except accounts and Friends (`python3 -m http.server 8000`). Opening `index.html` straight from disk won't work, because ES modules need a server.
 
-Tests for the server logic (auth, saves, crews): `npm test`.
+Tests for the server logic (auth, saves, crews, payday emails): `npm test`.
 
 Vercel deploys on every push to `main`: framework preset "Other", no build command.
 
@@ -58,7 +65,8 @@ Vercel deploys on every push to `main`: framework preset "Other", no build comma
 | `api/auth.js` | Sign up, sign in, refresh a session |
 | `api/save.js` | Read and write your cloud save |
 | `api/crew.js` | Crews: create, join, update, leave, read |
-| `api/_lib/*.js` | The rules for each (`auth`, `save`, `crew`), kept separate from storage so they're testable, plus `db.js` (Postgres queries) and `schema.js` (tables) |
+| `api/payday.js` | The Friday payday-email job, and test emails |
+| `api/_lib/*.js` | The rules for each (`auth`, `save`, `crew`), kept separate from storage so they're testable, plus `payday.js` (paycheck math and the email), `mailer.js` (Gmail), `db.js` (Postgres queries) and `schema.js` (tables) |
 
 To add a car, add an entry to `CARS` in `js/data.js`. Its shape comes from `len`, `bodyH`, `cab`, `roofH` and the slopes. To add a home, add an entry to `HOMES` and a matching `case` in `drawHome()` in `js/art.js`.
 
