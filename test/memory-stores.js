@@ -65,3 +65,27 @@ export function memoryPayday(recipients = []) {
     async unclaim(userId, key) { claimed.delete(`${userId}|${key}`); },
   };
 }
+
+export function memoryBoard(crews = {}) {
+  const milestones = new Map(); // id -> { ..., votes: Map, congrats: [] }
+  const reports = new Map(); // id -> { ..., votes: Map }
+  const outM = (m) => m && { ...m, votes: [...m.votes].map(([userId, amount]) => ({ userId, amount })), congrats: [...m.congrats] };
+  const outR = (r) => r && { ...r, votes: [...r.votes].map(([userId, agree]) => ({ userId, agree })) };
+  return {
+    crews,
+    async members(code) { return crews[code] || null; },
+    async listMilestones(code) { return [...milestones.values()].filter((m) => m.crewCode === code).map(outM); },
+    async getMilestone(id) { return outM(milestones.get(id)) || null; },
+    async createMilestone(m) { milestones.set(m.id, { ...m, doneAt: null, bonus: null, votes: new Map(), congrats: [] }); },
+    async voteMilestone(id, userId, amount) { milestones.get(id).votes.set(userId, amount); },
+    async completeMilestone(id, bonus, now) { const m = milestones.get(id); if (!m.doneAt) Object.assign(m, { doneAt: now, bonus }); },
+    async deleteMilestone(id) { milestones.delete(id); },
+    async setCongrats(id, userId, on) { const m = milestones.get(id); m.congrats = m.congrats.filter((u) => u !== userId); if (on) m.congrats.push(userId); },
+    async listReports(code) { return [...reports.values()].filter((r) => r.crewCode === code).map(outR); },
+    async getReport(id) { return outR(reports.get(id)) || null; },
+    async findOpenReport(code, target, shiftId) { return [...reports.values()].some((r) => r.crewCode === code && r.target === target && r.shift.id === shiftId && r.status === 'open'); },
+    async createReport(r) { reports.set(r.id, { ...r, votes: new Map() }); },
+    async voteReport(id, userId, agree) { reports.get(id).votes.set(userId, agree); },
+    async setReportStatus(id, status) { reports.get(id).status = status; },
+  };
+}

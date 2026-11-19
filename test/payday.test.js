@@ -7,24 +7,34 @@ const H = 3600e3;
 const NOW = Date.UTC(2026, 10, 20, 22, 5); // a Friday, 5:05 PM Eastern
 const shift = (hoursAgo, len, earned, extra = {}) => ({ id: `${hoursAgo}`, start: NOW - hoursAgo * H, end: NOW - hoursAgo * H + len * H, earned, paid: false, ...extra });
 
-test('payday: pending shifts plus a just-issued check, ignoring old or deposited ones', () => {
+test('payday: shifts and bonuses not yet on a paycheck, minus a week of living costs', () => {
   const save = {
+    equipped: { home: 'pgh-studio' }, pets: ['cat'], // $9 + $4 a day
     sessions: [shift(30, 2, 30), shift(5, 1, 15), shift(100, 1, 15, { paid: true })],
-    checks: [
-      { payday: NOW - H, gross: 45, ms: 3 * H, shifts: ['a', 'b'], deposited: false },
-      { payday: NOW - 8 * 24 * H, gross: 99, ms: H, shifts: ['c'], deposited: false },
-      { payday: NOW - 2 * H, gross: 50, ms: H, shifts: ['d'], deposited: true },
-    ],
+    bonuses: [{ id: 'm1', title: 'Malloc lab', amount: 40, paid: false }, { id: 'm0', amount: 99, paid: true }],
+    checks: [{ payday: NOW - 8 * 24 * H, gross: 99, net: 50, ms: H, shifts: ['c'], deposited: false }],
   };
-  assert.deepEqual(paycheckFor(save, NOW), { amount: 90, hours: 6, shifts: 4 });
+  assert.deepEqual(paycheckFor(save, NOW), { amount: 85 - 91, earned: 85, costs: 91, bonus: 40, hours: 3, shifts: 2 });
   assert.equal(paycheckFor({ sessions: [], checks: [] }, NOW), null);
 });
 
+test('payday: a check the app already issued this payday is what is waiting', () => {
+  const save = {
+    equipped: { home: 'pgh-dorm' },
+    sessions: [shift(30, 2, 30, { paid: true })],
+    checks: [{ payday: NOW - H, gross: 45, net: 31, ms: 3 * H, shifts: ['a', 'b'], deposited: false }],
+  };
+  assert.deepEqual(paycheckFor(save, NOW), { amount: 31, earned: 45, costs: 14, bonus: 0, hours: 3, shifts: 2 });
+  save.checks[0].deposited = true;
+  assert.equal(paycheckFor(save, NOW), null, 'already deposited: nothing waiting, no email');
+});
+
 test('payday: email text', () => {
-  const e = paydayEmail({ name: 'Jasmine', amount: 90, hours: 6, shifts: 4, balance: 100 });
-  assert.equal(e.subject, 'Payday: your $90.00 paycheck is ready');
+  const e = paydayEmail({ name: 'Jasmine', amount: 76, earned: 90, costs: 14, hours: 6, shifts: 4, balance: 100 });
+  assert.equal(e.subject, 'Payday: your $76.00 paycheck is ready');
   assert.match(e.text, /6h 00m over 4 shifts/);
-  assert.match(e.text, /from \$100\.00 to \$190\.00/);
+  assert.match(e.text, /After \$14\.00 in living costs, your paycheck is \$76\.00/);
+  assert.match(e.text, /from \$100\.00 to \$176\.00/);
   assert.match(e.html, /Jasmine/);
   assert.ok(!paydayEmail({ name: '<b>x</b>', amount: 1, hours: 1, shifts: 1 }).html.includes('<b>x</b>'), 'names are escaped');
 });
