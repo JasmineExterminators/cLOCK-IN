@@ -1,35 +1,8 @@
 // Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleCrew, Conflict, normCode } from '../api/_lib/crew.js';
-
-function memoryCrews() {
-  const crews = new Map(); // code -> Map(userId -> {card, updatedAt})
-  return {
-    async getCrew(code) {
-      const m = crews.get(code);
-      return m ? { code, members: [...m].map(([userId, v]) => ({ userId, ...v })) } : null;
-    },
-    async createCrew(code, userId, card) {
-      if (crews.has(code)) throw new Conflict();
-      crews.set(code, new Map([[userId, { card, updatedAt: Date.now() }]]));
-    },
-    async addMember(code, userId, card, max) {
-      const m = crews.get(code);
-      if (!m) return 'no_crew';
-      if (!m.has(userId) && m.size >= max) return 'full';
-      m.set(userId, { card, updatedAt: Date.now() });
-      return 'ok';
-    },
-    async updateMember(code, userId, card) {
-      const m = crews.get(code);
-      if (!m || !m.has(userId)) return false;
-      m.set(userId, { card, updatedAt: Date.now() });
-      return true;
-    },
-    async removeMember(code, userId) { crews.get(code)?.delete(userId); },
-  };
-}
+import { handleCrew, normCode, MAX_CREWS } from '../api/_lib/crew.js';
+import { memoryCrews } from './memory-stores.js';
 
 const A = { id: 'user-a', email: 'a@x.com' };
 const B = { id: 'user-b', email: 'b@x.com' };
@@ -80,4 +53,35 @@ test('crew: bad input', async () => {
   assert.equal((await handleCrew(s, A, 'POST', {}, { action: 'join', code: 'ABCDEF' })).status, 404);
   assert.equal((await handleCrew(s, A, 'POST', {}, { action: 'update', code: 'ABCDEF' })).status, 404);
   assert.equal((await handleCrew(s, A, 'DELETE')).status, 405);
+});
+
+test('crew: one person in several named crews', async () => {
+  const s = memoryCrews();
+  const a = (await handleCrew(s, A, 'POST', {}, { action: 'create', name: '  Racing   team ', card: card('Jasmine') })).json;
+  const b = (await handleCrew(s, B, 'POST', {}, { action: 'create', name: 'Roommates', card: card('Ari') })).json;
+  assert.equal(a.name, 'Racing team');
+  await handleCrew(s, A, 'POST', {}, { action: 'join', code: b.code, card: card('Jasmine') });
+
+  const mine = (await handleCrew(s, A, 'GET', {})).json.crews;
+  assert.deepEqual(mine.map((c) => c.name), ['Racing team', 'Roommates']);
+  assert.equal(mine[1].size, 2);
+
+  // One update reaches every crew.
+  const now = Date.now();
+  const up = await handleCrew(s, A, 'POST', {}, { action: 'update_all', card: card('Jasmine', { clockedInAt: now }) });
+  assert.equal(up.json.updated, 2);
+  const seen = (await handleCrew(s, B, 'GET', { code: b.code })).json.members.find((m) => m.id === A.id);
+  assert.equal(seen.clockedInAt, now);
+
+  const renamed = await handleCrew(s, B, 'POST', {}, { action: 'rename', code: b.code, name: 'Forbes Ave' });
+  assert.equal(renamed.json.name, 'Forbes Ave');
+  assert.equal((await handleCrew(s, B, 'POST', {}, { action: 'rename', code: a.code, name: 'x' })).status, 404, 'only members rename');
+});
+
+test('crew: limit on how many crews one person joins', async () => {
+  const s = memoryCrews();
+  for (let i = 0; i < MAX_CREWS; i++) await handleCrew(s, A, 'POST', {}, { action: 'create', card: card('J') });
+  assert.equal((await handleCrew(s, A, 'POST', {}, { action: 'create', card: card('J') })).status, 409);
+  const other = (await handleCrew(s, B, 'POST', {}, { action: 'create', card: card('B') })).json.code;
+  assert.equal((await handleCrew(s, A, 'POST', {}, { action: 'join', code: other, card: card('J') })).status, 409);
 });

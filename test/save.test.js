@@ -1,22 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleSave } from '../api/_lib/save.js';
+import { memorySaves } from './memory-stores.js';
 
-function memorySaves() {
-  const rows = new Map();
-  return {
-    async get(id) { return rows.get(id) || null; },
-    async put(id, data, base, force) {
-      const cur = rows.get(id);
-      if (force || (!cur && !base) || (cur && cur.version === base)) {
-        const row = { data, version: (cur?.version || 0) + 1, updatedAt: Date.now() };
-        rows.set(id, row);
-        return { ok: true, version: row.version, updatedAt: row.updatedAt };
-      }
-      return { ok: false, current: cur || null };
-    },
-  };
-}
 const U = { id: 'u1' };
 
 test('save: first save, then versioned updates', async () => {

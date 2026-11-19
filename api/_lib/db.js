@@ -70,17 +70,26 @@ export const saveStore = {
 export const crewStore = {
   async getCrew(code) {
     const s = await db();
-    const [crew] = await s`select code from public.crews where code = ${code}`;
+    const [crew] = await s`select code, name from public.crews where code = ${code}`;
     if (!crew) return null;
     const members = await s`
       select user_id, card, updated_at from public.crew_members where crew_code = ${code} order by joined_at`;
-    return { code, members: members.map((m) => ({ userId: m.user_id, card: m.card, updatedAt: m.updated_at.getTime() })) };
+    return { code, name: crew.name || '', members: members.map((m) => ({ userId: m.user_id, card: m.card, updatedAt: m.updated_at.getTime() })) };
   },
 
-  async createCrew(code, userId, card) {
+  async listMine(userId) {
+    const s = await db();
+    const rows = await s`
+      select c.code, c.name, (select count(*)::int from public.crew_members x where x.crew_code = c.code) as size
+      from public.crew_members m join public.crews c on c.code = m.crew_code
+      where m.user_id = ${userId} order by m.joined_at`;
+    return rows.map((r) => ({ code: r.code, name: r.name || '', size: r.size }));
+  },
+
+  async createCrew(code, userId, card, name = '') {
     const s = await db();
     await s.begin(async (t) => {
-      const [made] = await t`insert into public.crews (code, created_by) values (${code}, ${userId}) on conflict do nothing returning code`;
+      const [made] = await t`insert into public.crews (code, created_by, name) values (${code}, ${userId}, ${name || null}) on conflict do nothing returning code`;
       if (!made) throw new Conflict('exists');
       await t`insert into public.crew_members (crew_code, user_id, card) values (${code}, ${userId}, ${t.json(card)})`;
     });
@@ -107,6 +116,18 @@ export const crewStore = {
       update public.crew_members set card = ${s.json(card)}, updated_at = now()
       where crew_code = ${code} and user_id = ${userId} returning user_id`;
     return rows.length > 0;
+  },
+
+  async updateAll(userId, card) {
+    const s = await db();
+    const rows = await s`
+      update public.crew_members set card = ${s.json(card)}, updated_at = now() where user_id = ${userId} returning crew_code`;
+    return rows.length;
+  },
+
+  async renameCrew(code, name) {
+    const s = await db();
+    await s`update public.crews set name = ${name || null} where code = ${code}`;
   },
 
   async removeMember(code, userId) {

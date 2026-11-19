@@ -18,6 +18,7 @@ create table if not exists public.crews (
   created_at timestamptz not null default now()
 );
 alter table public.crews enable row level security;
+alter table public.crews add column if not exists name text;
 
 create table if not exists public.crew_members (
   crew_code  text not null references public.crews(code) on delete cascade,
