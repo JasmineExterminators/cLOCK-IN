@@ -1,4 +1,6 @@
-import { CARS, HOMES, CITIES, PAYDAY, rankFor, nextRank, LEGACY_HOME, LEGACY_CAR } from './data.js';
+import { CARS, HOMES, CITIES, PAYDAY, FURNITURE, PETS, livingCosts, costPerDay, rankFor, nextRank, LEGACY_HOME, LEGACY_CAR } from './data.js';
+import { renderRoom, renderItemTile, drawYardPets } from './room.js';
+import { initBoard } from './board.js';
 import { renderScene, renderCarSide, renderHomeTile } from './art.js';
 import { Pix, hex } from './pixel.js';
 import { dotText } from './glyphs.js';
@@ -40,12 +42,15 @@ const fresh = () => ({
   sessions: [], // { id, start, end, task, rate, earned, paid, checkNo }
   checks: [], // { no, payday, from, gross, ms, shifts: [ids], deposited }
   balance: 0,
-  owned: { car: ['bike'], home: ['pgh-dorm'] },
+  owned: { car: ['bike'], home: ['pgh-dorm'], furniture: [] },
+  pets: [], // pet ids; each costs money every day
   equipped: { car: 'bike', home: 'pgh-dorm' },
   lastPayday: prevPayday(Date.now()),
   crews: [], // codes of the crews I'm in, e.g. ['K7MPQ2']
   activeCrew: null, // the crew shown on the Friends page
   paydayEmails: true, // email me when my paycheck is ready
+  bonuses: [], // milestone bonuses: { id, title, amount, paid, checkNo }
+  appliedReports: [], // upheld report ids already applied to my shifts
   owner: null, // account id this save belongs to (null = made before signing in)
 });
 
@@ -71,6 +76,9 @@ function migrate(s) {
   if (s.crew) { s.crews = [...new Set([...(s.crews || []), s.crew])]; s.activeCrew = s.activeCrew || s.crew; }
   delete s.crew; // one crew became a list of crews
   if (!Array.isArray(s.crews)) s.crews = [];
+  s.owned.furniture = (s.owned.furniture || []).filter((id) => FURNITURE.some((f) => f.id === id));
+  s.pets = (s.pets || []).filter((id) => PETS.some((p) => p.id === id));
+  for (const k of ['bonuses', 'appliedReports']) if (!Array.isArray(s[k])) s[k] = [];
   return s;
 }
 
@@ -163,7 +171,10 @@ const liveMs = () => (state.clockedInAt ? Date.now() - state.clockedInAt : 0);
 const currentRate = () => rankFor(totalHours()).rate;
 const carById = (id) => CARS.find((c) => c.id === id) || CARS[0];
 const homeById = (id) => HOMES.find((h) => h.id === id) || HOMES[0];
-const pendingPay = () => round2(state.sessions.filter((s) => !s.paid).reduce((a, s) => a + s.earned, 0));
+const pendingPay = () => round2(state.sessions.filter((s) => !s.paid).reduce((a, s) => a + s.earned, 0)
+  + state.bonuses.filter((b) => !b.paid).reduce((a, b) => a + b.amount, 0));
+const netOf = (c) => (c.net ?? c.gross);
+const dailyCosts = () => costPerDay(state.equipped.home, state.pets);
 const undeposited = () => state.checks.filter((c) => !c.deposited);
 
 function msBetween(from, to) {
@@ -270,12 +281,22 @@ function showReceipt({ start, end, task, rate, earned, promoted }) {
 /* Payday                                                              */
 /* ------------------------------------------------------------------ */
 
+// A paycheck: the week's shifts and milestone bonuses, minus living costs for each day since the last one.
 function issueCheck(list, payday, from) {
   const no = 1001 + state.checks.length;
-  const gross = round2(list.reduce((a, s) => a + s.earned, 0));
+  const bonuses = state.bonuses.filter((b) => !b.paid);
+  const days = Math.max(1, Math.round((payday - from) / DAY));
+  const deductions = livingCosts(state.equipped.home, state.pets)
+    .map((c) => ({ label: c.label, amount: round2(c.perDay * days), perDay: c.perDay, days }));
+  const gross = round2(list.reduce((a, s) => a + s.earned, 0) + bonuses.reduce((a, b) => a + b.amount, 0));
+  const net = round2(gross - deductions.reduce((a, d) => a + d.amount, 0));
   const ms = list.reduce((a, s) => a + s.end - s.start, 0);
   list.forEach((s) => { s.paid = true; s.checkNo = no; });
-  state.checks.push({ no, payday, from, gross, ms, shifts: list.map((s) => s.id), deposited: false });
+  bonuses.forEach((b) => { b.paid = true; b.checkNo = no; });
+  state.checks.push({
+    no, payday, from, gross, net, ms, shifts: list.map((s) => s.id),
+    bonuses: bonuses.map((b) => ({ title: b.title, amount: b.amount })), deductions, deposited: false,
+  });
 }
 
 function processPaydays() {
@@ -283,7 +304,7 @@ function processPaydays() {
   let issued = false;
   while (p <= Date.now()) {
     const unpaid = state.sessions.filter((s) => !s.paid && s.end <= p);
-    if (unpaid.length) { issueCheck(unpaid, p, state.lastPayday); issued = true; }
+    if (unpaid.length || state.bonuses.some((b) => !b.paid) || dailyCosts() > 0) { issueCheck(unpaid, p, state.lastPayday); issued = true; }
     state.lastPayday = p;
     p = nextPayday(p);
   }
@@ -297,9 +318,18 @@ function openCheck(c) {
   checkOpenNo = c.no;
   $('#check-no').textContent = c.no;
   $('#check-date').textContent = new Date(c.payday).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+  const net = netOf(c);
   $('#check-name').textContent = state.name || 'You';
-  $('#check-amount').textContent = usd(c.gross);
-  $('#check-words').textContent = checkWords(c.gross);
+  $('#check-amount').textContent = net < 0 ? `−${usd(-net)}` : usd(net);
+  $('#check-words').textContent = net < 0 ? `You owe ${checkWords(-net).toLowerCase()}` : checkWords(net);
+  const lines = [[`Shifts, ${dur(c.ms)}`, c.gross - (c.bonuses || []).reduce((a, b) => a + b.amount, 0)],
+    ...(c.bonuses || []).map((b) => [`Milestone bonus: ${b.title}`, b.amount]),
+    ...(c.deductions || []).map((d) => [`${d.label}${d.days ? `, ${d.days} days at ${usd(d.perDay)}` : ''}`, -d.amount])];
+  $('#check-lines').innerHTML = (c.deductions?.length || c.bonuses?.length)
+    ? lines.map(([l, v]) => `<div><dt>${esc(l)}</dt><dd>${v < 0 ? `−${usd(-v)}` : usd(v)}</dd></div>`).join('')
+      + `<div class="check-net"><dt>Take-home</dt><dd>${net < 0 ? `−${usd(-net)}` : usd(net)}</dd></div>`
+    : '';
+  $('#check-deposit').textContent = net < 0 ? `Pay ${usd(-net)}` : 'Deposit';
   const shifts = c.shifts.length;
   $('#check-memo').textContent = `${shortDate(c.from)}–${shortDate(c.payday)}, ${dur(c.ms)} over ${shifts} shift${shifts === 1 ? '' : 's'}`;
   $('#check').showModal();
@@ -309,10 +339,11 @@ function deposit(no) {
   const c = state.checks.find((x) => x.no === no);
   if (!c || c.deposited) return;
   c.deposited = true;
-  state.balance = round2(state.balance + c.gross);
+  const net = netOf(c);
+  state.balance = round2(state.balance + net);
   save();
   renderBalance(true);
-  toast(`Deposited ${usd(c.gross)}. Time to go shopping.`);
+  toast(net >= 0 ? `Deposited ${usd(net)}. Time to go shopping.` : `Paid ${usd(-net)} in living costs.`);
   renderAll();
 }
 
@@ -329,14 +360,25 @@ $('#bank-deposit').addEventListener('click', () => openCheck(undeposited()[0]));
 /* ------------------------------------------------------------------ */
 
 let lastSceneKey = '';
+let placeView = 'out'; // out | in
 function renderSceneIfChanged() {
-  const key = `${state.equipped.home}|${state.equipped.car}|${!!state.clockedInAt}`;
+  const key = `${placeView}|${state.equipped.home}|${state.equipped.car}|${!!state.clockedInAt}|${state.pets}|${state.owned.furniture}`;
   if (key === lastSceneKey) return;
   lastSceneKey = key;
-  renderScene(homeById(state.equipped.home), carById(state.equipped.car), { working: !!state.clockedInAt }).draw($('#scene'));
-  $('#place-home').textContent = homeById(state.equipped.home).name;
-  $('#place-car').textContent = carById(state.equipped.car).name;
+  const home = homeById(state.equipped.home), working = !!state.clockedInAt;
+  const P = placeView === 'in'
+    ? renderRoom(home, state.owned.furniture, state.pets, { working })
+    : drawYardPets(renderScene(home, carById(state.equipped.car), { working }), state.pets);
+  P.draw($('#scene'));
+  $('#scene').setAttribute('aria-label', placeView === 'in' ? 'Inside your place' : 'Your home and car');
+  $('#place-home').textContent = home.name;
+  const n = state.owned.furniture.length, pets = state.pets.map((id) => PETS.find((p) => p.id === id)?.name.toLowerCase());
+  $('#place-car').textContent = placeView === 'in'
+    ? (n || pets.length ? [n ? `${n} piece${n === 1 ? '' : 's'} of furniture` : '', pets.length ? `your ${pets.join(' and ')}` : ''].filter(Boolean).join(', ') : 'Empty for now. Furniture from the shop shows up here.')
+    : carById(state.equipped.car).name;
+  $$('[data-place]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.place === placeView)));
 }
+$$('[data-place]').forEach((b) => b.addEventListener('click', () => { placeView = b.dataset.place; renderSceneIfChanged(); }));
 
 let lastTimer = '', lastOn = null;
 function renderClock() {
@@ -381,7 +423,7 @@ function renderStats() {
   const waiting = undeposited();
   $('#check-banner').hidden = !waiting.length;
   if (waiting.length) {
-    const sum = round2(waiting.reduce((a, c) => a + c.gross, 0));
+    const sum = round2(waiting.reduce((a, c) => a + netOf(c), 0));
     $('#check-banner-text').textContent = waiting.length === 1
       ? `It's payday. Your paycheck for ${usd(sum)} is ready to deposit.`
       : `You have ${waiting.length} paychecks waiting, ${usd(sum)} in total.`;
@@ -413,7 +455,7 @@ function shiftRow(s, removable = false) {
   return `<li class="shift">
     <div class="shift-main">
       <strong>${esc(s.task || 'Untitled shift')}</strong>
-      <span class="muted">${time(s.start)}–${time(s.end)}${s.paid ? '' : ' <span class="tag">Pending</span>'}</span>
+      <span class="muted">${time(s.start)}–${time(s.end)}${s.paid ? '' : ' <span class="tag">Pending</span>'}${s.reported ? ' <span class="tag warn">Cut by crew</span>' : ''}</span>
     </div>
     <span class="shift-dur">${dur(s.end - s.start)}</span>
     <span class="money-pos">+${usd(s.earned)}</span>
@@ -443,10 +485,11 @@ function renderPay() {
   $('#bank-pending').textContent = usd(pendingPay());
   $('#bank-payday').textContent = paydayLabel(true).replace(/^Payday /, '');
   $('#bank-lifetime').textContent = usd(lifetime);
+  $('#bank-costs').textContent = `${usd(dailyCosts())}/day`;
   const waiting = undeposited();
   $('#bank-waiting').hidden = !waiting.length;
   if (waiting.length) {
-    const sum = round2(waiting.reduce((a, c) => a + c.gross, 0));
+    const sum = round2(waiting.reduce((a, c) => a + netOf(c), 0));
     $('#bank-waiting-text').textContent = waiting.length === 1
       ? `Paycheck for ${usd(sum)} waiting to be deposited.`
       : `${waiting.length} paychecks, ${usd(sum)} in total, waiting to be deposited.`;
@@ -470,10 +513,10 @@ function renderPay() {
         .map((c) => `<li class="check-row">
           <div class="shift-main">
             <strong>No. ${c.no}, ${shortDate(c.payday)}</strong>
-            <span class="muted">${dur(c.ms)}, ${c.shifts.length} shift${c.shifts.length === 1 ? '' : 's'}</span>
+            <span class="muted">${dur(c.ms)}, ${c.shifts.length} shift${c.shifts.length === 1 ? '' : 's'}${c.deductions?.length ? `, ${usd(c.gross)} earned` : ''}</span>
           </div>
-          <span class="money-pos">${usd(c.gross)}</span>
-          ${c.deposited ? '<span class="muted small">Deposited</span>' : `<button class="tile-btn buy small" data-open-check="${c.no}">Deposit</button>`}
+          <span class="${netOf(c) < 0 ? 'money-neg' : 'money-pos'}">${netOf(c) < 0 ? `−${usd(-netOf(c))}` : usd(netOf(c))}</span>
+          ${c.deposited ? `<span class="muted small">${netOf(c) < 0 ? 'Paid' : 'Deposited'}</span>` : `<button class="tile-btn buy small" data-open-check="${c.no}">${netOf(c) < 0 ? 'Pay' : 'Deposit'}</button>`}
         </li>`)
         .join('')
     : `<li class="empty">Your first paycheck arrives on payday with everything you earned that week.</li>`;
@@ -485,43 +528,53 @@ function renderPay() {
 
 let shopTab = 'homes';
 const tileCache = new Map();
+const SHOP = {
+  homes: { slot: 'home', items: () => HOMES.filter((h) => h.city === 'pgh'), art: (it) => renderHomeTile(it) },
+  cars: { slot: 'car', items: () => CARS, art: (it) => renderCarSide(it) },
+  furniture: { slot: 'furniture', items: () => FURNITURE, art: (it) => renderItemTile('furniture', it.id) },
+  pets: { slot: 'pet', items: () => PETS, art: (it) => renderItemTile('pet', it.id) },
+};
+const ownsItem = (slot, id) => (slot === 'pet' ? state.pets : state.owned[slot]).includes(id);
 function renderShop() {
   $$('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === shopTab)));
-  const isCar = shopTab === 'cars';
-  const items = isCar ? CARS : HOMES.filter((h) => h.city === 'pgh');
-  const slot = isCar ? 'car' : 'home';
+  const { slot, items, art } = SHOP[shopTab];
+  const equips = slot === 'home' || slot === 'car';
   const tiles = $('#tiles');
   tiles.className = `tiles ${shopTab}`;
-  tiles.innerHTML = items
+  tiles.innerHTML = items()
     .map((it) => {
-      const owned = state.owned[slot].includes(it.id);
-      const equipped = state.equipped[slot] === it.id;
+      const owned = ownsItem(slot, it.id);
+      const equipped = equips && state.equipped[slot] === it.id;
       const afford = state.balance >= it.price;
       let btn;
       if (equipped) btn = `<button class="tile-btn" disabled>Equipped</button>`;
-      else if (owned) btn = `<button class="tile-btn" data-equip="${it.id}">Equip</button>`;
+      else if (owned && equips) btn = `<button class="tile-btn" data-equip="${it.id}">Equip</button>`;
+      else if (owned) btn = `<button class="tile-btn owned" disabled>${slot === 'pet' ? 'Part of the family' : 'In your room'}</button>`;
       else
         btn = `<button class="tile-btn buy" data-buy="${it.id}" ${afford ? '' : 'disabled'}>${
           afford ? `Buy for ${usd(it.price, false)}` : `${usd(it.price - state.balance, false)} more`
         }</button>`;
-      return `<article class="tile${equipped ? ' equipped' : ''}">
-        <div class="tile-art" style="--tile:${it.tile}"><canvas data-art="${slot}:${it.id}"></canvas>${
+      const perDay = slot === 'home' ? it.utilities : slot === 'pet' ? it.upkeep : 0;
+      const cost = perDay ? `<span class="tile-cost">${slot === 'home' ? 'Utilities' : 'Care'} ${usd(perDay, false)}/day</span>` : '';
+      return `<article class="tile${equipped || (owned && !equips) ? ' equipped' : ''}">
+        <div class="tile-art" style="--tile:${it.tile}"><canvas data-art="${shopTab}:${it.id}"></canvas>${
           it.hood ? `<span class="tile-hood">${it.hood}</span>` : ''}</div>
         <div class="tile-body">
           <div class="tile-title"><h3>${it.name}</h3><span class="price">${it.price ? usd(it.price, false) : 'Starter'}</span></div>
           <p class="muted">${it.blurb}</p>
+          ${cost}
           ${btn}
         </div>
       </article>`;
     })
     .join('');
   $$('canvas[data-art]', tiles).forEach((cv) => {
-    const [kind, id] = cv.dataset.art.split(':');
     const key = cv.dataset.art;
-    if (!tileCache.has(key)) tileCache.set(key, kind === 'car' ? renderCarSide(carById(id)) : renderHomeTile(homeById(id)));
+    const id = key.split(':')[1];
+    if (!tileCache.has(key)) tileCache.set(key, art(items().find((x) => x.id === id)));
     tileCache.get(key).draw(cv);
   });
-  $('#cities').innerHTML = isCar ? '' : `<h2>More cities</h2><div class="city-row">${CITIES.filter((c) => !c.open)
+  $('#cities').innerHTML = shopTab !== 'homes' ? '' : `<h2>More cities</h2><div class="city-row">${CITIES.filter((c) => !c.open)
     .map((c) => `<div class="city"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
       <div><strong>${c.name}</strong><span class="muted">${c.unlock}</span></div></div>`).join('')}</div>`;
 }
@@ -553,6 +606,9 @@ function myCard() {
     weekStart: startOfWeek(),
     clockedInAt: state.clockedInAt || null,
     task: state.clockedInAt ? state.task || '' : '',
+    pets: state.pets,
+    shifts: sorted().filter((x) => x.end > Date.now() - 7 * DAY).slice(-14).reverse()
+      .map((x) => ({ id: x.id, start: x.start, end: x.end, task: x.task || '' })),
   };
 }
 
@@ -602,6 +658,61 @@ async function refreshCrew() {
   try { gotCrew(code, await crewApi.get(code)); }
   catch (e) { handleCrewError(code, e); }
   if (view === 'friends') renderFriends();
+  board.refresh(code);
+}
+
+/* ---------- crew board: milestone bonuses and reports land in my save ---------- */
+
+const board = initBoard({
+  toast,
+  activeCrew: () => activeCrew(),
+  nameOf: (id) => crewData.get(activeCrew())?.members.find((m) => m.id === id)?.name,
+  cardOf: (id) => crewData.get(activeCrew())?.members.find((m) => m.id === id),
+  onData: (code, data) => {
+    const me = currentUser()?.id;
+    let changed = false;
+    for (const m of data.milestones) {
+      if (m.userId !== me || !m.doneAt || m.bonus == null || state.bonuses.some((b) => b.id === m.id)) continue;
+      state.bonuses.push({ id: m.id, title: m.title, amount: m.bonus, paid: false });
+      toast(`Milestone bonus: ${usd(m.bonus)} for ${m.title} goes on Friday’s paycheck.`);
+      changed = true;
+    }
+    for (const r of data.reports) {
+      if (r.target === me && r.status === 'upheld' && !state.appliedReports.includes(r.id)) { applyReport(r); changed = true; }
+    }
+    if (changed) { save(); renderAll(); }
+  },
+});
+
+// An upheld report shortens one of my shifts to the length the crew agreed on, and takes back the extra pay.
+function applyReport(r) {
+  state.appliedReports.push(r.id);
+  const cap = r.capHours * HOUR;
+  if (r.shift.end == null) {
+    if (state.clockedInAt && Math.abs(state.clockedInAt - r.shift.start) < 60e3) {
+      const start = state.clockedInAt, end = Math.min(Date.now(), start + cap), rate = currentRate();
+      state.sessions.push({ id: `${start}`, start, end, task: state.task, rate, earned: round2(((end - start) / HOUR) * rate), paid: false, reported: true });
+      state.clockedInAt = null;
+      state.task = '';
+      toast(`Your crew clocked you out: that shift was cut to ${r.capHours}h.`);
+    }
+    return;
+  }
+  const s = state.sessions.find((x) => x.id === r.shift.id);
+  if (!s || s.end - s.start <= cap) return;
+  const earned = round2((cap / HOUR) * s.rate);
+  const diff = round2(s.earned - earned);
+  const cut = s.end - s.start - cap;
+  s.end = s.start + cap;
+  s.earned = earned;
+  s.reported = true;
+  const c = s.paid ? state.checks.find((x) => x.no === s.checkNo) : null;
+  if (c) {
+    c.ms -= cut;
+    if (c.deposited) state.balance = round2(state.balance - diff);
+    else { c.gross = round2(c.gross - diff); if (c.net != null) c.net = round2(c.net - diff); }
+  }
+  toast(`Your crew upheld a report: a shift was cut to ${r.capHours}h, and ${usd(diff)} came off.`);
 }
 
 async function openFriends() {
@@ -744,8 +855,8 @@ const liveWeekHours = (c) => {
 };
 
 function friendScene(c) {
-  const key = `${c.home}|${c.car}|${!!c.clockedInAt}`;
-  if (!sceneCache.has(key)) sceneCache.set(key, renderScene(homeById(c.home), carById(c.car), { working: !!c.clockedInAt }));
+  const key = `${c.home}|${c.car}|${!!c.clockedInAt}|${c.pets || ''}`;
+  if (!sceneCache.has(key)) sceneCache.set(key, drawYardPets(renderScene(homeById(c.home), carById(c.car), { working: !!c.clockedInAt }), c.pets || []));
   return sceneCache.get(key);
 }
 
@@ -764,6 +875,7 @@ function renderFriends() {
   const signedIn = !!currentUser();
   const code = activeCrew();
   const showStart = signedIn && (!code || addingCrew || !!pendingInvite);
+  $('#board').hidden = !signedIn || showStart || !code;
   $('#crew-tabs').hidden = !signedIn || !state.crews.length;
   $('#crew-start').hidden = !showStart;
   $('#crew-bar').hidden = !signedIn || showStart || !code;
@@ -842,6 +954,7 @@ function renderFriends() {
             <div><dt>All time</dt><dd>${(Number(c.hours) || 0).toFixed(1)}h</dd></div>
             <div><dt>Drives</dt><dd>${esc(car.name)}</dd></div>
           </dl>
+          ${!isMe && (c.shifts?.length || c.clockedInAt) ? `<button class="text-btn report-btn" type="button" data-report="${esc(c.id)}">Report hours</button>` : ''}
         </div>
       </article>`;
     })
@@ -852,9 +965,12 @@ function renderFriends() {
   }
   friendsView = cards;
   tickFriends();
+  board.render(code);
 }
 
 $('#friends').addEventListener('click', (e) => {
+  const rep = e.target.closest('[data-report]');
+  if (rep) board.openReport(rep.dataset.report);
   if (e.target.closest('[data-retry]')) refreshCrew();
   if (e.target.closest('[data-signin]')) openAccount();
 });
@@ -1177,18 +1293,23 @@ document.addEventListener('keydown', (e) => {
 $$('.tabs [role=tab]').forEach((b) => b.addEventListener('click', () => { shopTab = b.dataset.tab; renderShop(); }));
 
 $('#tiles').addEventListener('click', (e) => {
-  const slot = shopTab === 'cars' ? 'car' : 'home';
-  const items = slot === 'car' ? CARS : HOMES;
+  const { slot, items: list } = SHOP[shopTab];
+  const items = list();
   const buy = e.target.closest('[data-buy]');
   const equip = e.target.closest('[data-equip]');
   if (buy) {
     const it = items.find((x) => x.id === buy.dataset.buy);
-    if (state.balance < it.price) return;
+    if (state.balance < it.price || ownsItem(slot, it.id)) return;
     state.balance = round2(state.balance - it.price);
-    state.owned[slot].push(it.id);
-    state.equipped[slot] = it.id;
+    if (slot === 'pet') state.pets.push(it.id);
+    else state.owned[slot].push(it.id);
+    if (slot === 'home' || slot === 'car') state.equipped[slot] = it.id;
+    if (slot === 'furniture' || slot === 'pet') placeView = 'in';
     save();
-    toast(`You bought the ${it.name} for ${usd(it.price, false)}. It's at your place now.`);
+    toast(slot === 'pet' ? `Welcome home, ${it.name.toLowerCase()}. Care costs ${usd(it.upkeep, false)} a day, taken from each paycheck.`
+      : slot === 'furniture' ? `The ${it.name.toLowerCase()} is in your room now.`
+      : slot === 'home' ? `You moved into the ${it.name}. Utilities are ${usd(it.utilities, false)} a day.`
+      : `You bought the ${it.name} for ${usd(it.price, false)}. It's at your place now.`);
     renderAll();
   } else if (equip) {
     const it = items.find((x) => x.id === equip.dataset.equip);
