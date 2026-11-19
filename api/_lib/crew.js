@@ -36,7 +36,15 @@ export function cleanCard(c = {}) {
     weekStart: time(c.weekStart),
     clockedInAt: time(c.clockedInAt),
     task: str(c.task, 60),
+    pets: Array.isArray(c.pets) ? c.pets.filter((p) => typeof p === 'string').slice(0, 8).map((p) => p.slice(0, 16)) : [],
+    shifts: Array.isArray(c.shifts) ? c.shifts.slice(0, 14).map(cleanCardShift).filter(Boolean) : [],
   };
+}
+
+function cleanCardShift(s) {
+  const start = time(s?.start), end = time(s?.end);
+  if (!start || !end || end <= start) return null;
+  return { id: str(String(s.id ?? start), 40), start, end, task: str(s.task, 60) };
 }
 
 export const cleanCrewName = (v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 32) : '');

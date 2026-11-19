@@ -39,4 +39,55 @@ create table if not exists public.payday_emails (
   primary key (user_id, payday)
 );
 alter table public.payday_emails enable row level security;
+
+-- Crew board: milestones with crew-suggested bonuses, and report tickets on suspicious shifts.
+create table if not exists public.milestones (
+  id         uuid primary key,
+  crew_code  text not null references public.crews(code) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  title      text not null,
+  created_at timestamptz not null default now(),
+  done_at    timestamptz,
+  bonus      numeric(10,2)
+);
+alter table public.milestones enable row level security;
+create index if not exists milestones_crew_idx on public.milestones (crew_code);
+
+create table if not exists public.milestone_votes (
+  milestone_id uuid not null references public.milestones(id) on delete cascade,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  amount       numeric(10,2) not null,
+  primary key (milestone_id, user_id)
+);
+alter table public.milestone_votes enable row level security;
+
+create table if not exists public.milestone_congrats (
+  milestone_id uuid not null references public.milestones(id) on delete cascade,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  created_at   timestamptz not null default now(),
+  primary key (milestone_id, user_id)
+);
+alter table public.milestone_congrats enable row level security;
+
+create table if not exists public.reports (
+  id         uuid primary key,
+  crew_code  text not null references public.crews(code) on delete cascade,
+  reporter   uuid not null references auth.users(id) on delete cascade,
+  target     uuid not null references auth.users(id) on delete cascade,
+  shift      jsonb not null,
+  reason     text not null default '',
+  cap_hours  numeric(5,2) not null,
+  status     text not null default 'open',
+  created_at timestamptz not null default now()
+);
+alter table public.reports enable row level security;
+create index if not exists reports_crew_idx on public.reports (crew_code);
+
+create table if not exists public.report_votes (
+  report_id uuid not null references public.reports(id) on delete cascade,
+  user_id   uuid not null references auth.users(id) on delete cascade,
+  agree     boolean not null,
+  primary key (report_id, user_id)
+);
+alter table public.report_votes enable row level security;
 `;

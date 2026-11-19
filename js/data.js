@@ -23,34 +23,34 @@ export const CITIES = [
 ];
 
 export const HOMES = [
-  { id: 'pgh-dorm', city: 'pgh', art: 'dorm', name: 'Dorm double, shared bedroom', hood: 'Oakland', price: 0,
+  { id: 'pgh-dorm', city: 'pgh', art: 'dorm', name: 'Dorm double, shared bedroom', hood: 'Oakland', price: 0, utilities: 2,
     color: '#b9a68c', tile: '#8f8b84', seed: 3,
     blurb: 'Bathroom down the hall, a roommate who snores, the 61C rattling by all night.' },
-  { id: 'pgh-suite', city: 'pgh', art: 'suite', name: 'Dorm suite, shared common room', hood: 'Oakland', price: 120,
+  { id: 'pgh-suite', city: 'pgh', art: 'suite', name: 'Dorm suite, shared common room', hood: 'Oakland', price: 120, utilities: 3,
     color: '#a86e55', tile: '#a0937a', seed: 4,
     blurb: 'Your own bedroom, four suitemates, one couch, and a fridge full of labeled leftovers.' },
-  { id: 'pgh-dorm-studio', city: 'pgh', art: 'dormstudio', name: 'Studio dorm', hood: 'North Oakland', price: 250,
+  { id: 'pgh-dorm-studio', city: 'pgh', art: 'dormstudio', name: 'Studio dorm', hood: 'North Oakland', price: 250, utilities: 4,
     color: '#cfcbc1', tile: '#97a5b4', seed: 6,
     blurb: 'A single with its own kitchenette and bathroom. Nobody else’s alarm clock.' },
-  { id: 'pgh-shared-apt', city: 'pgh', art: 'sharedapt', name: 'Shared apartment, 3 roommates', hood: 'South Oakland', price: 450,
+  { id: 'pgh-shared-apt', city: 'pgh', art: 'sharedapt', name: 'Shared apartment, 3 roommates', hood: 'South Oakland', price: 450, utilities: 6,
     color: '#8fa3a8', tile: '#77857c', seed: 8,
     blurb: 'Off campus at last. Rent split four ways, a porch, and a war over the thermostat.' },
-  { id: 'pgh-studio', city: 'pgh', art: 'studio', name: 'Studio apartment', hood: 'South Oakland', price: 700,
+  { id: 'pgh-studio', city: 'pgh', art: 'studio', name: 'Studio apartment', hood: 'South Oakland', price: 700, utilities: 9,
     color: '#d6d0c4', tile: '#77857c', seed: 5,
     blurb: 'Your own door at last, over a noodle shop. You can see the Cathedral of Learning from bed.' },
-  { id: 'pgh-rowhouse', city: 'pgh', art: 'rowhouse', name: 'Lawrenceville rowhouse', hood: 'Lawrenceville', price: 900,
+  { id: 'pgh-rowhouse', city: 'pgh', art: 'rowhouse', name: 'Lawrenceville rowhouse', hood: 'Lawrenceville', price: 900, utilities: 12,
     color: '#9c4f3a', tile: '#8c6f60', seed: 7,
     blurb: 'Skinny brick rowhouse a block off Butler Street. The coffee shops are all yours.' },
-  { id: 'pgh-townhouse', city: 'pgh', art: 'townhouse', name: 'Squirrel Hill townhouse', hood: 'Squirrel Hill', price: 2400,
+  { id: 'pgh-townhouse', city: 'pgh', art: 'townhouse', name: 'Squirrel Hill townhouse', hood: 'Squirrel Hill', price: 2400, utilities: 20,
     color: '#a8644c', tile: '#a0937a', seed: 9,
     blurb: 'Three floors of brick near Murray Ave, a roof deck, and bagels on Sunday.' },
-  { id: 'pgh-house', city: 'pgh', art: 'house', name: 'Shadyside house with a yard', hood: 'Shadyside', price: 6000,
+  { id: 'pgh-house', city: 'pgh', art: 'house', name: 'Shadyside house with a yard', hood: 'Shadyside', price: 6000, utilities: 35,
     color: '#e2d9c8', tile: '#77857c', seed: 11,
     blurb: 'A leafy street off Walnut, a rooftop garden, and a garage for the car.' },
-  { id: 'pgh-penthouse', city: 'pgh', art: 'penthouse', name: 'Downtown penthouse', hood: 'Downtown', price: 14000,
+  { id: 'pgh-penthouse', city: 'pgh', art: 'penthouse', name: 'Downtown penthouse', hood: 'Downtown', price: 14000, utilities: 60,
     color: '#93a1ae', tile: '#97a5b4', seed: 13,
     blurb: 'Top floor in the Golden Triangle. Three rivers and a dozen yellow bridges below.' },
-  { id: 'pgh-mansion', city: 'pgh', art: 'mansion', name: 'Riverfront mansion', hood: 'Fox Chapel', price: 30000,
+  { id: 'pgh-mansion', city: 'pgh', art: 'mansion', name: 'Riverfront mansion', hood: 'Fox Chapel', price: 30000, utilities: 110,
     color: '#efe7d6', tile: '#6f7a8a', seed: 17, river: true,
     blurb: 'Columns, a pool, and your own dock on the Allegheny.' },
 ];
@@ -81,6 +81,40 @@ export const CARS = [
     stripe: '#f2efe8', goldRims: true, isoLen: 10,
     blurb: 'A race car with a license plate. Too fast for any road in Allegheny County.' },
 ];
+
+// Furniture shows up in the inside view of your place. One of each.
+export const FURNITURE = [
+  { id: 'plants', name: 'Pothos and a snake plant', price: 30, tile: '#77857c', blurb: 'Hard to kill. You will still worry about them.' },
+  { id: 'poster', name: 'Framed bridge print', price: 35, tile: '#8c6f60', blurb: 'One of the 446 bridges, over your bed.' },
+  { id: 'rug', name: 'Thrifted rug', price: 45, tile: '#a0937a', blurb: 'From a Squirrel Hill thrift store. Ties the room together.' },
+  { id: 'lamp', name: 'Floor lamp', price: 50, tile: '#97a5b4', blurb: 'Warm light for late nights, instead of the overhead.' },
+  { id: 'beanbag', name: 'Beanbag chair', price: 60, tile: '#7c5f58', blurb: 'For reading. Or for naps you say are reading.' },
+  { id: 'desk', name: 'Study desk', price: 90, tile: '#8f8b84', blurb: 'A real desk with a lamp and a second monitor. Your back thanks you.' },
+  { id: 'bookshelf', name: 'Bookshelf', price: 120, tile: '#6f7a8a', blurb: 'Textbooks on the bottom, the good stuff at eye level.' },
+  { id: 'espresso', name: 'Espresso machine', price: 260, tile: '#4f5966', blurb: 'Pays for itself in about forty fewer coffee shop trips.' },
+  { id: 'tv', name: 'TV and a game console', price: 350, tile: '#5d6672', blurb: 'A reward for locking in. Not a replacement for it.' },
+  { id: 'couch', name: 'Couch', price: 500, tile: '#a0937a', blurb: 'Seats three, or one person and a cat.' },
+];
+
+// Pets cost money every day to look after.
+export const PETS = [
+  { id: 'fish', name: 'Betta fish', price: 25, upkeep: 1, tile: '#5d7f8c', blurb: 'A tank on the shelf. Very calming during problem sets.' },
+  { id: 'bunny', name: 'Bunny', price: 120, upkeep: 3, tile: '#a0937a', blurb: 'Chews cables. Forgiven immediately.' },
+  { id: 'cat', name: 'Rescue cat', price: 150, upkeep: 4, tile: '#8c6f60', blurb: 'Sits on your keyboard exactly when you lock in.' },
+  { id: 'dog', name: 'Shelter dog', price: 300, upkeep: 7, tile: '#77857c', blurb: 'Walks to Schenley Park twice a day. Good for both of you.' },
+];
+
+// What living costs per day: utilities for your home plus care for each pet.
+export function livingCosts(homeId, petIds = []) {
+  const home = HOMES.find((h) => h.id === homeId) || HOMES[0];
+  const out = [{ label: `Utilities, ${home.name}`, perDay: home.utilities || 0 }];
+  for (const id of petIds) {
+    const pet = PETS.find((p) => p.id === id);
+    if (pet) out.push({ label: `Care for your ${pet.name.toLowerCase()}`, perDay: pet.upkeep });
+  }
+  return out.filter((c) => c.perDay > 0);
+}
+export const costPerDay = (homeId, petIds) => livingCosts(homeId, petIds).reduce((a, c) => a + c.perDay, 0);
 
 export const rankFor = (hours) => {
   let r = RANKS[0];
