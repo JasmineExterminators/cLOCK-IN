@@ -96,12 +96,17 @@ export const FURNITURE = [
   { id: 'couch', name: 'Couch', price: 500, tile: '#a0937a', blurb: 'Seats three, or one person and a cat.' },
 ];
 
-// Pets cost money every day to look after.
+// Pets cost money every day to look after. Bigger dogs eat more.
 export const PETS = [
   { id: 'fish', name: 'Betta fish', price: 25, upkeep: 1, tile: '#5d7f8c', blurb: 'A tank on the shelf. Very calming during problem sets.' },
   { id: 'bunny', name: 'Bunny', price: 120, upkeep: 3, tile: '#a0937a', blurb: 'Chews cables. Forgiven immediately.' },
   { id: 'cat', name: 'Rescue cat', price: 150, upkeep: 4, tile: '#8c6f60', blurb: 'Sits on your keyboard exactly when you lock in.' },
-  { id: 'dog', name: 'Shelter dog', price: 300, upkeep: 7, tile: '#77857c', blurb: 'Walks to Schenley Park twice a day. Good for both of you.' },
+  { id: 'dog', name: 'Shelter dog', price: 300, upkeep: 7, tile: '#77857c', dog: true, blurb: 'Walks to Schenley Park twice a day. Good for both of you.' },
+  { id: 'dachshund', name: 'Dachshund', price: 450, upkeep: 6, tile: '#8c6f60', dog: true, blurb: 'Long, low and brave. Takes the stairs very seriously.' },
+  { id: 'corgi', name: 'Corgi', price: 600, upkeep: 7, tile: '#97a5b4', dog: true, blurb: 'Short legs, big ears, bigger opinions. Herds your roommates.' },
+  { id: 'poodle', name: 'Poodle', price: 700, upkeep: 8, tile: '#7c5f58', dog: true, blurb: 'Smarter than your study group. The grooming adds up.' },
+  { id: 'husky', name: 'Husky', price: 750, upkeep: 9, tile: '#5d7f8c', dog: true, blurb: 'Loves a Pittsburgh February. Talks back, loudly.' },
+  { id: 'golden', name: 'Golden retriever', price: 800, upkeep: 10, tile: '#6f7a8a', dog: true, blurb: 'Brings you a sock every time you clock out. Eats a lot.' },
 ];
 
 // What living costs per day: utilities for your home plus care for each pet.

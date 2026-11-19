@@ -11,9 +11,9 @@ A punch clock for studying. Clock in when you lock in, get paid by the hour, and
 - **Accounts**: sign up with email and password and your progress is saved to the cloud after every change, so it follows you to your phone or a new laptop. Without an account the app still works, saved only in that browser.
 - **Friends**: start or join crews with a 6-character code or invite link (needs an account). You can be in up to 10 crews, each with a name any member can change, and switch between them with tabs. Everyone in a crew sees each other's places, hours this week, and who's on the clock right now (with what they're working on).
 - **Living costs**: every home has daily utilities (from $2/day in a dorm double to $110/day in the mansion) and every pet has daily care. They come off each paycheck as deduction lines, so a paycheck can be negative and so can your balance.
-- **Furniture and pets**: buy furniture (plants up to a couch) and pets (fish, bunny, cat, dog) in the Shop. Switch your place between Outside and Inside to see your room furnished, with your pets in it. Pets also show in your yard on crew cards.
-- **Milestones**: post a big assignment to your crew. At least two people suggest what it's worth (at least one of them not you); the bonus is the average. Mark it done (honor system) and the bonus lands on your next paycheck, and your crew can congratulate you.
-- **Reports**: think a crewmate's shift looks wrong (say they fell asleep on the clock)? Report it with a fair length. The crew votes; a majority (at least two people) upholds it, or the person can accept it. Upheld reports cut the shift and its pay.
+- **Furniture and pets**: buy furniture (plants up to a couch) and pets (fish, bunny, cat, and six dogs: a shelter dog, dachshund, corgi, poodle, husky and golden retriever; bigger dogs cost more a day) in the Shop. Switch your place between Outside and Inside to see your room furnished, with your pets in it. Pets also show in your yard on crew cards.
+- **Milestones**: post a big assignment to your crew. At least two people suggest what it's worth (at least one of them not you); the bonus is the average. Mark it done (honor system) and the bonus lands on your next paycheck, shows on the Pay page as "(name) bonus", and your crew can congratulate you.
+- **Reports**: think a crewmate's shift looks wrong (say they fell asleep on the clock)? Report it with a fair length. The crew votes; a majority (at least two people) upholds it, or the person can accept it. Upheld reports cut the shift and its pay. Whoever filed a report can retract it while it's still open.
 - **Payday emails**: every Friday around 5 PM Eastern, anyone with pay waiting gets an email with their paycheck amount. Turn it off, or send yourself a test, from the Pay page.
 - **Pay page**: your bank balance up top (with this week's pay, next payday and lifetime pay), then every shift and every paycheck. Removing a shift takes its pay back out.
 - **Prototype tools** (bottom of Pay): add a test shift, run payday now, add money, reset.
@@ -73,7 +73,7 @@ Vercel deploys on every push to `main`: framework preset "Other", no build comma
 | `api/save.js` | Read and write your cloud save |
 | `api/crew.js` | Crews: create, join, update, leave, read |
 | `api/payday.js` | The Friday payday-email job, and test emails |
-| `api/board.js` | Milestones (suggest, complete, congratulate) and reports (file, vote, accept) |
+| `api/board.js` | Milestones (suggest, complete, congratulate) and reports (file, vote, accept, retract) |
 | `api/_lib/*.js` | The rules for each (`auth`, `save`, `crew`, `board`), kept separate from storage so they're testable, plus `payday.js` (paycheck math and the email), `mailer.js` (Gmail), `db.js` (Postgres queries) and `schema.js` (tables) |
 
 To add a car, add an entry to `CARS` in `js/data.js`. Its shape comes from `len`, `bodyH`, `cab`, `roofH` and the slopes. To add a home, add an entry to `HOMES` and a matching `case` in `drawHome()` in `js/art.js`.

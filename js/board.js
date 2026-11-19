@@ -102,6 +102,7 @@ export function initBoard(opts) {
       if (isTarget) actions = `<button class="ghost-btn" type="button" data-accept="${r.id}">Accept, cut it to ${r.capHours}h</button>`;
       else actions = `<button class="ghost-btn${myVote?.agree === true ? ' chosen' : ''}" type="button" data-vote="${r.id}" data-agree="1">Agree</button>
         <button class="ghost-btn${myVote?.agree === false ? ' chosen' : ''}" type="button" data-vote="${r.id}" data-agree="0">Disagree</button>`;
+      if (r.reporter === me()) actions += `<button class="text-btn" type="button" data-retract="${r.id}">Retract report</button>`;
     }
     const badge = r.status === 'upheld' ? `<span class="badge warn">Upheld, cut to ${r.capHours}h</span>`
       : r.status === 'dismissed' ? '<span class="badge">Dismissed</span>' : '<span class="badge open">Open</span>';
@@ -152,6 +153,7 @@ export function initBoard(opts) {
     else if (t.dataset.removeMs) await call({ action: 'remove', id: t.dataset.removeMs });
     else if (t.dataset.congrats) await call({ action: 'congrats', id: t.dataset.congrats, on: t.getAttribute('aria-pressed') !== 'true' });
     else if (t.dataset.vote) await call({ action: 'vote', id: t.dataset.vote, agree: t.dataset.agree === '1' });
+    else if (t.dataset.retract) { if (await call({ action: 'retract', id: t.dataset.retract })) opts.toast('Report retracted.'); }
     else if (t.dataset.accept) { if (await call({ action: 'accept', id: t.dataset.accept })) opts.toast('Report accepted. Your shift is shortened.'); }
   });
 

@@ -1,6 +1,7 @@
 // The inside of your place: a pixel-art room that fills up with the furniture you buy,
 // plus pet sprites (in the room, and out in the yard of the outside scene).
 import { Pix, Iso, hex, shade, mix, hash } from './pixel.js';
+import { PETS } from './data.js';
 
 const C = {
   wood: hex('#8a6a4c'), woodDark: hex('#6d5038'), woodLight: hex('#a5835f'),
@@ -16,22 +17,34 @@ const C = {
 
 const PALETTE = {
   o: '#d98c3f', d: '#a8652a', e: '#1c1d20', w: '#efe6d6', g: '#c9c1b3', b: '#8b5a3c', n: '#5e3a24', p: '#e6a0a0', f: '#f08a3c',
+  k: '#141416', c: '#d9783a', y: '#dcae55', Y: '#b07f2f', s: '#8a919a', S: '#4c5259', r: '#9a4a2a', R: '#6a2f17',
 };
 const SPRITES = {
   cat: ['.o..o..', '.oooo..', '.eooe..', 'oooooo.', 'oddooo.', 'o.o.oo.'],
   dog: ['nn.......', 'nbbn.....', 'nebbbbbb.', '.bbbbbbbb', '.b.b..b.b', '.b.b..b.b'],
   bunny: ['.w.w.', '.p.p.', '.w.w.', 'wwww.', 'wewwg', '.wwwg'],
+  // dog breeds, all facing left
+  corgi: ['.c.c......', '.ccc......', 'kewcccccc.', '.wwccccccc', '..wwwwwww.', '..c.c..c.c'],
+  golden: ['.yyy.......', 'kyeY.......', '.yyYyyyyyy.', '..yyyyyyyyY', '..yyyyyyyy.', '..y.y..y.y.', '..Y.Y..Y.Y.'],
+  husky: ['.S.S.....S', '.sss.....S', 'kwesSSSSSS', '.wwsssssss', '..wwwwwww.', '..w.w..w.w', '..w.w..w.w'],
+  dachshund: ['RR..........', 'RrrR........', 'kerrrrrrrrr.', '.rrrrrrrrrrR', '.r.r.....r.r'],
+  poodle: ['.ww.......', 'wwww.....w', 'kwewg...ww', '..wwwwwww.', '..gwwwwwg.', '..w.....w.', '..w.....w.', '.ww....ww.'],
 };
-function drawSprite(P, name, sx, sy, flip = false) {
+const DOGS = PETS.filter((p) => p.dog).map((p) => p.id);
+// Where dogs stand, in floor coordinates: inside the room, and out in the yard.
+const ROOM_DOG_SPOTS = [[20, 19], [9, 20], [25, 12], [12, 6], [24, 18], [6, 15]];
+const YARD_DOG_SPOTS = [[12, 20], [4, 13], [22, 22], [17, 23], [3, 20], [26, 17]];
+function drawSprite(P, name, sx, sy, flip = false, k = 1) {
   const rows = SPRITES[name];
-  const h = rows.length, w = rows[0].length;
+  const h = rows.length * k, w = rows[0].length * k;
+  const left = sx - Math.floor(w / 2);
   // soft shadow
-  for (let x = -1; x <= w; x++) P.set(sx - Math.floor(w / 2) + x, sy + 1, C.shadow, 0.25);
+  for (let x = -1; x <= w; x++) for (let j = 1; j <= k; j++) P.set(left + x, sy + j, C.shadow, 0.25);
   rows.forEach((row, r) => {
     [...row].forEach((ch, i) => {
       if (ch === '.') return;
-      const x = flip ? w - 1 - i : i;
-      P.set(sx - Math.floor(w / 2) + x, sy - h + 1 + r, hex(PALETTE[ch]));
+      const x = flip ? row.length - 1 - i : i;
+      for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) P.set(left + x * k + dx, sy - h + 1 + r * k + dy, hex(PALETTE[ch]));
     });
   });
 }
@@ -188,8 +201,11 @@ export function renderRoom(home, furniture = [], pets = [], { working = false } 
     const [sx, sy] = has('couch') ? iso.p(16, 15, 6) : iso.p(14, 12, 2);
     drawSprite(P, 'cat', sx, sy);
   }
-  if (pets.includes('dog')) { const [sx, sy] = iso.p(20, 19, 2); drawSprite(P, 'dog', sx, sy, true); }
   if (pets.includes('bunny')) { const [sx, sy] = iso.p(5, 18, 2); drawSprite(P, 'bunny', sx, sy); }
+  DOGS.filter((d) => pets.includes(d))
+    .map((d, i) => [d, ...ROOM_DOG_SPOTS[i % ROOM_DOG_SPOTS.length], i])
+    .sort((p, q) => p[1] + p[2] - (q[1] + q[2]))
+    .forEach(([d, x, y, i]) => { const [sx, sy] = iso.p(x, y, 2); drawSprite(P, d, sx, sy, i % 2 === 0); });
 
   // the room is dimmer off the clock
   if (!working) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) P.set(x, y, hex('#0e1018'), 0.18);
@@ -200,9 +216,12 @@ export function renderRoom(home, furniture = [], pets = [], { working = false } 
 export function drawYardPets(P, pets = []) {
   const a = 28, b = 24;
   const iso = new Iso(P, P.w / 2 - (a - b), P.h - (a + b) - 9);
-  if (pets.includes('dog')) { const [sx, sy] = iso.p(12, 20, 5); drawSprite(P, 'dog', sx, sy); }
   if (pets.includes('cat')) { const [sx, sy] = iso.p(24, 12, 5); drawSprite(P, 'cat', sx, sy, true); }
   if (pets.includes('bunny')) { const [sx, sy] = iso.p(8, 21, 5); drawSprite(P, 'bunny', sx, sy); }
+  DOGS.filter((d) => pets.includes(d))
+    .map((d, i) => [d, ...YARD_DOG_SPOTS[i % YARD_DOG_SPOTS.length], i])
+    .sort((p, q) => p[1] + p[2] - (q[1] + q[2]))
+    .forEach(([d, x, y, i]) => { const [sx, sy] = iso.p(x, y, 5); drawSprite(P, d, sx, sy, i % 2 === 1); });
   return P;
 }
 
@@ -241,7 +260,7 @@ export function renderItemTile(kind, id) {
     }
   } else {
     if (id === 'fish') PIECES.fishtank(iso, 5, 4, 2);
-    else { const [sx, sy] = iso.p(7, 7, 2); drawSprite(P, id, sx, sy); }
+    else { const [sx, sy] = iso.p(8, 8, 2); drawSprite(P, id, sx, sy, false, 2); }
   }
   return P;
 }
