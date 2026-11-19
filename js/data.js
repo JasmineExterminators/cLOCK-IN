@@ -64,6 +64,13 @@ export const CARS = [
   { id: 'super', name: 'Supercar', price: 12000, kind: 'sport', color: '#2f3036', tile: '#6f7a8a',
     len: 42, bodyH: 4, cab: [0.33, 0.66], roofH: 3, rearSlope: 4, frontSlope: 4, round: true, goldRims: true, isoLen: 9,
     blurb: 'Out of the Fort Pitt Tunnel, windows down, as the whole skyline appears.' },
+  { id: 'vela-gt', name: 'Vela 12 GT', price: 25000, kind: 'sport', color: '#c4262b', tile: '#7c5f58',
+    len: 46, bodyH: 4, cab: [0.36, 0.7], roofH: 3, rearSlope: 2, frontSlope: 2, pillarShift: 1, round: true, intake: true, isoLen: 10,
+    blurb: 'A long red hood and a V12 under it. Turns heads on Walnut Street.' },
+  { id: 'vela-str', name: 'Vela Stradale', price: 50000, kind: 'sport', color: '#e0342a', tile: '#4f5966',
+    len: 46, bodyH: 4, cab: [0.3, 0.62], roofH: 3, rearSlope: 2, frontSlope: 2, pillarShift: 1, round: true, intake: true, wing: true,
+    stripe: '#f2efe8', goldRims: true, isoLen: 10,
+    blurb: 'A race car with a license plate. Too fast for any road in Allegheny County.' },
 ];
 
 export const rankFor = (hours) => {

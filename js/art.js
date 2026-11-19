@@ -96,6 +96,18 @@ export function renderCarSide(car, scale = 1) {
     }
   }
 
+  // side intake and rear wing (Vela cars)
+  if (car.intake) {
+    const ix = x0 + Math.floor(len * car.cab[1]) + 1;
+    for (let x = ix; x < ix + 4; x++) P.set(x, bodyTop + 2 + (x - ix > 1 ? 1 : 0), shade(body, -0.45));
+  }
+  if (car.wing) {
+    const wy = bodyTop - 3;
+    for (let x = x0 - 1; x <= x0 + 5; x++) P.set(x, wy, x === x0 - 1 ? hex('#1c1d20') : shade(body, 0.1));
+    for (let x = x0; x <= x0 + 5; x++) P.set(x, wy + 1, hex('#1c1d20'));
+    for (const px of [x0 + 1, x0 + 4]) for (let y = wy + 2; y < bodyTop; y++) P.set(px, y, hex('#2a2b2e'));
+  }
+
   // rust & moss
   if (car.rust) {
     for (let y = bodyTop; y <= bodyBot; y++)
@@ -222,6 +234,9 @@ function drawIsoCar(iso, car, x, y, z) {
     right: C.glassDark,
     leftFn: (u, v) => (v === ch - 1 && u % 3 === 1 ? C.glassHi : null),
   });
+  if (car.wing) {
+    iso.box(x, y, z + 1 + bh + 1, 1, W, 1, { top: hex('#1c1d20'), left: shade(body, -0.2), right: hex('#1c1d20') });
+  }
   if (car.moss) {
     const [sx, sy] = iso.p(x + cs + 1, y + 1, z + 1 + bh + ch);
     for (let i = 0; i < 6; i++) if (hash(i, 77) < car.moss + 0.3) P.set(sx + i - 2, sy + (i % 2), moss(hash(i, 2)));
