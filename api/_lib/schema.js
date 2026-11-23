@@ -82,6 +82,8 @@ create table if not exists public.reports (
 );
 alter table public.reports enable row level security;
 create index if not exists reports_crew_idx on public.reports (crew_code);
+alter table public.reports add column if not exists response text;
+alter table public.reports add column if not exists responded_at timestamptz;
 
 create table if not exists public.report_votes (
   report_id uuid not null references public.reports(id) on delete cascade,

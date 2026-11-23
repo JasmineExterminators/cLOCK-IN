@@ -26,6 +26,7 @@ export function initBoard(opts) {
   const boards = new Map(); // code -> { milestones, reports }
   let busy = false;
   let reportTarget = null;
+  const drafts = new Map(); // report id -> response being typed, kept across redraws
   const me = () => currentUser()?.id;
   const name = (id) => (id === me() ? 'You' : opts.nameOf(id) || 'Someone');
   const possessive = (id) => (id === me() ? 'your' : `${name(id)}’s`);
@@ -36,7 +37,7 @@ export function initBoard(opts) {
     busy = true;
     try {
       await api('POST', '/api/board', { crew: code, ...body });
-      await refresh(code);
+      await refresh(code, true);
       return true;
     } catch (e) {
       opts.toast(e.message);
@@ -46,14 +47,15 @@ export function initBoard(opts) {
     }
   }
 
-  async function refresh(code) {
+  // Background refreshes skip redrawing while someone is typing on the board, so nothing they wrote is lost.
+  async function refresh(code, force = false) {
     if (!code || !currentUser()) return;
     try {
       const data = await api('GET', `/api/board?crew=${encodeURIComponent(code)}`);
       boards.set(code, data);
       opts.onData(code, data);
     } catch {}
-    if (code === opts.activeCrew()) render(code);
+    if (code === opts.activeCrew()) render(code, force);
   }
 
   function milestoneRow(m) {
@@ -99,7 +101,8 @@ export function initBoard(opts) {
     const isTarget = r.target === me();
     let actions = '';
     if (r.status === 'open') {
-      if (isTarget) actions = `<button class="ghost-btn" type="button" data-accept="${r.id}">Accept, cut it to ${r.capHours}h</button>`;
+      if (isTarget) actions = `<button class="ghost-btn" type="button" data-accept="${r.id}">Accept, cut it to ${r.capHours}h</button>${
+        r.response ? `<button class="text-btn" type="button" data-respond-edit>Edit response</button>` : ''}`;
       else actions = `<button class="ghost-btn${myVote?.agree === true ? ' chosen' : ''}" type="button" data-vote="${r.id}" data-agree="1">Agree</button>
         <button class="ghost-btn${myVote?.agree === false ? ' chosen' : ''}" type="button" data-vote="${r.id}" data-agree="0">Disagree</button>`;
       if (r.reporter === me()) actions += `<button class="text-btn" type="button" data-retract="${r.id}">Retract report</button>`;
@@ -110,14 +113,22 @@ export function initBoard(opts) {
       <div class="ms-head">${badge}<span class="muted small">${ago(r.createdAt)}</span></div>
       <p>${esc(name(r.reporter))} reported ${esc(possessive(r.target))} shift ${esc(span)}${s.task ? `, “${esc(s.task)}”` : ''}. Fair length: ${r.capHours}h.</p>
       ${r.reason ? `<p class="report-reason">${esc(r.reason)}</p>` : ''}
+      ${r.response ? `<div class="report-response"><span class="muted small">${isTarget ? 'Your response' : `${esc(name(r.target))} responded`}, ${ago(r.respondedAt)}</span><p>${esc(r.response)}</p></div>` : ''}
+      ${isTarget && r.status === 'open' ? `<form class="respond-form" data-respond="${r.id}"${r.response && !drafts.has(r.id) ? ' hidden' : ''}>
+        <label class="sr-only" for="respond-${r.id}">Your side of the story</label>
+        <textarea id="respond-${r.id}" maxlength="280" rows="2" placeholder="Your side of the story, like “I was reading the whole time”">${esc(drafts.get(r.id) ?? r.response)}</textarea>
+        <div class="ms-actions"><button class="ghost-btn" type="submit">${r.response ? 'Update response' : 'Send response'}</button>${r.response ? '<button class="text-btn" type="button" data-respond-cancel>Cancel</button>' : ''}</div>
+      </form>` : ''}
       ${r.status === 'open' ? `<p class="muted small">${agree} agree, ${disagree} disagree. Decided by a majority of the crew (at least 2 people), or if ${isTarget ? 'you accept' : `${esc(name(r.target))} accepts`}.</p>` : ''}
       ${actions ? `<div class="ms-actions">${actions}</div>` : ''}
     </li>`;
   }
 
-  function render(code) {
+  function render(code, force = false) {
     const root = $('#board');
     if (!root) return;
+    // Don't redraw under someone typing on the board, unless they just sent something.
+    if (!force && document.activeElement?.matches?.('#board input, #board textarea')) return;
     const data = boards.get(code);
     root.hidden = !code;
     if (!data) { $('#ms-list').innerHTML = '<li class="empty">Loading…</li>'; $('#report-list').innerHTML = ''; return; }
@@ -139,7 +150,19 @@ export function initBoard(opts) {
     if (!title) { input.focus(); return; }
     if (await call({ action: 'milestone', title })) { input.value = ''; opts.toast('Milestone added. Ask your crew to suggest a bonus.'); }
   });
+  $('#board').addEventListener('input', (e) => {
+    const f = e.target.closest('[data-respond]');
+    if (f) drafts.set(f.dataset.respond, e.target.value);
+  });
   $('#board').addEventListener('submit', async (e) => {
+    const r = e.target.closest('[data-respond]');
+    if (r) {
+      e.preventDefault();
+      const text = r.querySelector('textarea').value.trim();
+      if (!text) { r.querySelector('textarea').focus(); return; }
+      if (await call({ action: 'respond', id: r.dataset.respond, text })) { drafts.delete(r.dataset.respond); render(opts.activeCrew(), true); opts.toast('Response posted. Your crew sees it before they vote.'); }
+      return;
+    }
     const f = e.target.closest('[data-suggest]');
     if (!f) return;
     e.preventDefault();
@@ -149,6 +172,13 @@ export function initBoard(opts) {
   $('#board').addEventListener('click', async (e) => {
     const t = e.target.closest('button');
     if (!t || t.disabled) return;
+    if (t.hasAttribute('data-respond-edit') || t.hasAttribute('data-respond-cancel')) {
+      const form = t.closest('.report').querySelector('[data-respond]');
+      form.hidden = t.hasAttribute('data-respond-cancel');
+      if (form.hidden) drafts.delete(form.dataset.respond);
+      if (!form.hidden) form.querySelector('textarea').focus();
+      return;
+    }
     if (t.dataset.complete) { if (await call({ action: 'complete', id: t.dataset.complete })) opts.toast('Done. The bonus goes on Friday’s paycheck.'); }
     else if (t.dataset.removeMs) await call({ action: 'remove', id: t.dataset.removeMs });
     else if (t.dataset.congrats) await call({ action: 'congrats', id: t.dataset.congrats, on: t.getAttribute('aria-pressed') !== 'true' });
@@ -168,7 +198,7 @@ export function initBoard(opts) {
     $('#report-shifts').innerHTML = shifts.length
       ? shifts.map((s, i) => `<label class="report-shift"><input type="radio" name="report-shift" value="${i}" ${i === 0 ? 'checked' : ''} />
           <span><strong>${s.end ? `${when(s.start)}–${time(s.end)}` : `On the clock since ${when(s.start)}`}</strong>
-          <span class="muted small">${dur((s.end ?? Date.now()) - s.start)}${s.task ? `, ${esc(s.task)}` : ''}</span></span></label>`).join('')
+          <span class="muted small">${dur((s.end ?? Date.now()) - s.start)}${s.task ? `, ${esc(s.task)}` : ''}</span>${s.edited ? '<span class="tag">Edited</span>' : ''}</span></label>`).join('')
       : '<p class="muted">No shifts this week to report.</p>';
     $('#report-shifts').dataset.shifts = JSON.stringify(shifts);
     $('#report-cap').value = 2;

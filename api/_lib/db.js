@@ -182,6 +182,7 @@ async function reportsWhere(s, cond) {
   return rows.map((r) => ({
     id: r.id, crewCode: r.crew_code, reporter: r.reporter, target: r.target, shift: r.shift, reason: r.reason,
     capHours: Number(r.cap_hours), status: r.status, createdAt: ms(r.created_at),
+    response: r.response || '', respondedAt: ms(r.responded_at),
     votes: votes.filter((v) => v.report_id === r.id).map((v) => ({ userId: v.user_id, agree: v.agree })),
   }));
 }
@@ -241,4 +242,8 @@ export const boardStore = {
   },
   async setReportStatus(id, status) { const s = await db(); await s`update public.reports set status = ${status} where id = ${id}`; },
   async deleteReport(id) { const s = await db(); await s`delete from public.reports where id = ${id}`; },
+  async respondReport(id, text, now) {
+    const s = await db();
+    await s`update public.reports set response = ${text}, responded_at = ${new Date(now)} where id = ${id}`;
+  },
 };

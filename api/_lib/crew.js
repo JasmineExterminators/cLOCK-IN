@@ -44,7 +44,7 @@ export function cleanCard(c = {}) {
 function cleanCardShift(s) {
   const start = time(s?.start), end = time(s?.end);
   if (!start || !end || end <= start) return null;
-  return { id: str(String(s.id ?? start), 40), start, end, task: str(s.task, 60) };
+  return { id: str(String(s.id ?? start), 40), start, end, task: str(s.task, 60), edited: s.edited === true };
 }
 
 export const cleanCrewName = (v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 32) : '');

@@ -88,5 +88,6 @@ export function memoryBoard(crews = {}) {
     async voteReport(id, userId, agree) { reports.get(id).votes.set(userId, agree); },
     async setReportStatus(id, status) { reports.get(id).status = status; },
     async deleteReport(id) { reports.delete(id); },
+    async respondReport(id, text, now) { Object.assign(reports.get(id), { response: text, respondedAt: now }); },
   };
 }

@@ -86,6 +86,22 @@ test('reports: the reporter can retract an open report, nobody else can', async 
   assert.equal((await post(s, A, { action: 'retract', id: r2.id })).status, 409, 'decided reports stay');
 });
 
+test('reports: the reported person can respond, and update the response, while it is open', async () => {
+  const s = memoryBoard({ CREW01: ['a', 'b', 'c'] });
+  const shift = { id: 's1', start: NOW - 12 * H, end: NOW - H, task: 'reading' };
+  const r = (await post(s, A, { action: 'report', target: 'b', shift, capHours: 2 })).json;
+  assert.equal(r.response, '');
+  assert.equal((await post(s, A, { action: 'respond', id: r.id, text: 'hi' })).status, 403, 'not the reporter');
+  assert.equal((await post(s, C, { action: 'respond', id: r.id, text: 'hi' })).status, 403, 'not a crewmate');
+  assert.equal((await post(s, B, { action: 'respond', id: r.id, text: '   ' })).status, 400, 'needs text');
+  const first = (await post(s, B, { action: 'respond', id: r.id, text: '  I was  reading the whole time ' })).json;
+  assert.equal(first.response, 'I was reading the whole time');
+  assert.equal(first.respondedAt, NOW);
+  assert.equal((await post(s, B, { action: 'respond', id: r.id, text: 'x'.repeat(400) })).json.response.length, 280);
+  await post(s, C, { action: 'vote', id: r.id, agree: true });
+  assert.equal((await post(s, B, { action: 'respond', id: r.id, text: 'late' })).status, 409, 'decided reports are closed');
+});
+
 test('reports: in a crew of two, only accepting decides it', () => {
   assert.equal(reportStatus({ status: 'open', votes: [{ userId: 'a', agree: true }] }, 2), 'open');
   assert.equal(reportStatus({ status: 'open', votes: [{ userId: 'a', agree: true }, { userId: 'c', agree: true }] }, 3), 'upheld');
