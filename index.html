@@ -73,6 +73,7 @@
             <div class="clock-status">
               <span class="pulse" aria-hidden="true"></span>
               <span id="clock-status-text">Off the clock</span>
+              <button class="text-btn edit-start" id="edit-start-btn" type="button" hidden>Edit start time</button>
             </div>
             <div class="timer" role="timer" aria-live="off"><canvas id="timer-canvas" aria-hidden="true"></canvas><span class="sr-only" id="timer">0:00:00</span></div>
             <div class="clock-earn">
@@ -350,6 +351,28 @@
         <button class="text-btn" id="account-switch" type="button">New here? Create an account</button>
         <button class="text-btn" id="account-cancel" type="button">Not now</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Edit a shift's times -->
+  <dialog id="edit-shift" class="account-dialog" aria-labelledby="edit-title">
+    <form id="edit-form" class="account-form" novalidate>
+      <h2 id="edit-title">Edit shift</h2>
+      <p class="muted" id="edit-lede"></p>
+      <div class="edit-times">
+        <label><span>Started</span><input id="edit-start" type="datetime-local" step="60" /></label>
+        <label id="edit-end-wrap"><span>Ended</span><input id="edit-end" type="datetime-local" step="60" /></label>
+      </div>
+      <div class="edit-nudge" role="group" aria-label="Change the length">
+        <button class="ghost-btn" type="button" data-nudge="-30">&minus;30 min</button>
+        <button class="ghost-btn" type="button" data-nudge="-15">&minus;15 min</button>
+        <button class="ghost-btn" type="button" data-nudge="15">+15 min</button>
+        <button class="ghost-btn" type="button" data-nudge="30">+30 min</button>
+      </div>
+      <p class="edit-summary" id="edit-summary" aria-live="polite"></p>
+      <p class="account-error" id="edit-error" role="alert" hidden></p>
+      <button class="punch small" type="submit">Save changes</button>
+      <div class="account-foot"><span class="muted small">Your crew can see that a shift was edited.</span><button class="text-btn" id="edit-cancel" type="button">Cancel</button></div>
     </form>
   </dialog>
 

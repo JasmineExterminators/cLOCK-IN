@@ -49,6 +49,7 @@ const fresh = () => ({
   crews: [], // codes of the crews I'm in, e.g. ['K7MPQ2']
   activeCrew: null, // the crew shown on the Friends page
   paydayEmails: true, // email me when my paycheck is ready
+  liveEdited: false, // the start of the shift on the clock now was moved by hand
   bonuses: [], // milestone bonuses: { id, title, amount, at, paid, checkNo }
   appliedReports: [], // upheld report ids already applied to my shifts
   owner: null, // account id this save belongs to (null = made before signing in)
@@ -251,8 +252,9 @@ function clockOut() {
   const before = rankFor(totalHours());
   const rate = before.rate;
   const earned = round2(((end - start) / HOUR) * rate);
-  state.sessions.push({ id: `${start}`, start, end, task: state.task, rate, earned, paid: false });
+  state.sessions.push({ id: `${start}`, start, end, task: state.task, rate, earned, paid: false, ...(state.liveEdited ? { edited: true } : {}) });
   state.clockedInAt = null;
+  state.liveEdited = false;
   const task = state.task;
   state.task = '';
   $('#task-input').value = '';
@@ -398,6 +400,7 @@ function renderClock() {
   $('#shift-earned').textContent = usd((ms / HOUR) * rate);
   $('#shift-rate').textContent = `this shift at ${usd(rate, false)}/hr`;
   $('#clock-status-text').textContent = on ? `On the clock since ${time(state.clockedInAt)}` : 'Off the clock';
+  $('#edit-start-btn').hidden = !on;
   $('#punch-label').textContent = on ? 'Clock out' : 'Clock in';
   const input = $('#task-input');
   input.disabled = on;
@@ -456,11 +459,14 @@ function shiftRow(s, removable = false) {
   return `<li class="shift">
     <div class="shift-main">
       <strong>${esc(s.task || 'Untitled shift')}</strong>
-      <span class="muted">${time(s.start)}–${time(s.end)}${s.paid ? '' : ' <span class="tag">Pending</span>'}${s.reported ? ' <span class="tag warn">Cut by crew</span>' : ''}</span>
+      <span class="muted">${time(s.start)}–${time(s.end)}${s.paid ? '' : ' <span class="tag">Pending</span>'}${s.edited ? ' <span class="tag">Edited</span>' : ''}${s.reported ? ' <span class="tag warn">Cut by crew</span>' : ''}</span>
     </div>
     <span class="shift-dur">${dur(s.end - s.start)}</span>
     <span class="money-pos">+${usd(s.earned)}</span>
-    ${removable ? `<button class="icon-btn" data-remove="${s.id}" aria-label="Remove shift">×</button>` : ''}
+    ${removable ? `<span class="shift-actions">
+      <button class="icon-btn edit" data-edit="${s.id}" aria-label="Edit times"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z" /><path d="M9.5 4l2.5 2.5" /></svg></button>
+      <button class="icon-btn" data-remove="${s.id}" aria-label="Remove shift">×</button>
+    </span>` : ''}
   </li>`;
 }
 
@@ -622,7 +628,7 @@ function myCard() {
     task: state.clockedInAt ? state.task || '' : '',
     pets: state.pets,
     shifts: sorted().filter((x) => x.end > Date.now() - 7 * DAY).slice(-14).reverse()
-      .map((x) => ({ id: x.id, start: x.start, end: x.end, task: x.task || '' })),
+      .map((x) => ({ id: x.id, start: x.start, end: x.end, task: x.task || '', edited: !!x.edited })),
   };
 }
 
@@ -707,6 +713,7 @@ function applyReport(r) {
       const start = state.clockedInAt, end = Math.min(Date.now(), start + cap), rate = currentRate();
       state.sessions.push({ id: `${start}`, start, end, task: state.task, rate, earned: round2(((end - start) / HOUR) * rate), paid: false, reported: true });
       state.clockedInAt = null;
+      state.liveEdited = false;
       state.task = '';
       toast(`Your crew clocked you out: that shift was cut to ${r.capHours}h.`);
     }
@@ -1335,6 +1342,8 @@ $('#tiles').addEventListener('click', (e) => {
 });
 
 $('#shift-days').addEventListener('click', async (e) => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed) { openEdit({ id: ed.dataset.edit }); return; }
   const b = e.target.closest('[data-remove]');
   if (!b) return;
   const s = state.sessions.find((x) => x.id === b.dataset.remove);
@@ -1351,12 +1360,131 @@ $('#shift-days').addEventListener('click', async (e) => {
     c.shifts = c.shifts.filter((id) => id !== s.id);
     c.ms -= s.end - s.start;
     if (c.deposited) state.balance = round2(state.balance - s.earned);
-    else c.gross = round2(c.gross - s.earned);
+    else { c.gross = round2(c.gross - s.earned); if (c.net != null) c.net = round2(c.net - s.earned); }
   }
   save();
   renderAll();
   toast('Shift removed.');
 });
+
+/* ------------------------------------------------------------------ */
+/* Editing shift times                                                 */
+/* ------------------------------------------------------------------ */
+
+const MAX_SHIFT = 16 * HOUR;
+const pad2 = (n) => String(n).padStart(2, '0');
+const toInput = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+// The inputs only show minutes, so exact times live in editing.cur; a field still showing cur's minute keeps it.
+const readTime = (el, exact) => (el.value === toInput(exact) ? exact : el.value ? new Date(el.value).getTime() : NaN);
+let editing = null; // { id, s, orig, cur } for a finished shift, or { live: true, orig, cur } for the shift on the clock now
+
+function openEdit(target) {
+  const live = !!target.live;
+  const s = live ? null : state.sessions.find((x) => x.id === target.id);
+  if (live ? !state.clockedInAt : !s) return;
+  const orig = live ? { start: state.clockedInAt } : { start: s.start, end: s.end };
+  editing = { ...target, s, orig, cur: { ...orig } };
+  $('#edit-title').textContent = live ? 'Edit start time' : 'Edit shift';
+  $('#edit-lede').textContent = live
+    ? 'Forgot to clock in on time, or left the clock running? Move when this shift started.'
+    : `${s.task || 'Untitled shift'}. Change when it started or ended, and the pay follows.`;
+  $('#edit-start').value = toInput(editing.orig.start);
+  $('#edit-end-wrap').hidden = live;
+  if (!live) $('#edit-end').value = toInput(s.end);
+  $('#edit-start').max = $('#edit-end').max = toInput(Date.now());
+  updateEditSummary();
+  $('#edit-shift').showModal();
+}
+
+function editTimes() {
+  const start = readTime($('#edit-start'), editing.cur.start);
+  const end = editing.live ? Date.now() : readTime($('#edit-end'), editing.cur.end);
+  editing.cur = { start, end: editing.live ? undefined : end };
+  return { start, end };
+}
+
+function editProblem({ start, end }) {
+  const { live, s, orig } = editing;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 'Pick a date and time.';
+  if (start > Date.now() || end > Date.now() + 60e3) return 'Shifts can’t be in the future.';
+  if (end <= start) return 'The shift has to end after it starts.';
+  if (end - start > MAX_SHIFT) return 'A shift can be up to 16 hours. Split a longer stretch into two shifts.';
+  if (s?.reported && end - start > orig.end - orig.start) return 'Your crew cut this shift, so it can only get shorter.';
+  const clash = state.sessions.find((x) => x !== s && x.start < end && start < x.end);
+  if (clash) return `That overlaps your ${time(clash.start)}–${time(clash.end)} shift on ${shortDate(clash.start)}.`;
+  if (!live && state.clockedInAt && end > state.clockedInAt) return 'That overlaps the shift you’re on now.';
+  return null;
+}
+
+function updateEditSummary() {
+  const t = editTimes();
+  const problem = editProblem(t);
+  $('#edit-error').textContent = problem || '';
+  $('#edit-error').hidden = !problem;
+  const out = $('#edit-summary');
+  if (!Number.isFinite(t.start) || !Number.isFinite(t.end) || t.end <= t.start) { out.textContent = ''; return; }
+  const ms = t.end - t.start;
+  if (editing.live) { out.textContent = `On the clock for ${dur(ms)} so far.`; return; }
+  const { s, orig } = editing;
+  const earned = round2((ms / HOUR) * s.rate);
+  const diff = round2(earned - s.earned);
+  const was = orig.end - orig.start;
+  out.innerHTML = `${dur(ms)}, <strong>${usd(earned)}</strong>${ms === was ? '' : ` <span class="${diff < 0 ? 'money-neg' : 'money-pos'}">(${diff < 0 ? '−' : '+'}${usd(Math.abs(diff))})</span>. Was ${dur(was)}`}.`;
+}
+
+function nudgeEdit(min) {
+  const { start, end } = editTimes();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  const d = min * 60e3;
+  // The shift on the clock can only move its start. A finished shift gets longer at the end (or at the start once
+  // the end reaches now), and gets shorter by first undoing any earlier start, then trimming the end.
+  if (editing.live) editing.cur.start = start - d;
+  else if (d > 0) { if (end + d <= Date.now()) editing.cur.end = end + d; else editing.cur.start = start - d; }
+  else {
+    const undo = Math.min(-d, Math.max(0, editing.orig.start - start));
+    editing.cur.start = start + undo;
+    editing.cur.end = end - (-d - undo);
+  }
+  $('#edit-start').value = toInput(editing.cur.start);
+  if (!editing.live) $('#edit-end').value = toInput(editing.cur.end);
+  updateEditSummary();
+}
+
+function saveEdit() {
+  const t = editTimes();
+  const problem = editProblem(t);
+  if (problem) { $('#edit-error').textContent = problem; $('#edit-error').hidden = false; return false; }
+  const { live, s, orig } = editing;
+  if (live) {
+    if (t.start !== orig.start) {
+      state.clockedInAt = t.start;
+      state.liveEdited = true;
+      toast(`Start time moved to ${time(t.start)}.`);
+    }
+  } else if (t.start !== orig.start || t.end !== orig.end) {
+    const oldMs = s.end - s.start;
+    const earned = round2(((t.end - t.start) / HOUR) * s.rate);
+    const diff = round2(earned - s.earned);
+    Object.assign(s, { start: t.start, end: t.end, earned, edited: true });
+    const c = s.paid ? state.checks.find((x) => x.no === s.checkNo) : null;
+    if (c) {
+      c.ms += t.end - t.start - oldMs;
+      if (c.deposited) state.balance = round2(state.balance + diff);
+      else { c.gross = round2(c.gross + diff); if (c.net != null) c.net = round2(c.net + diff); }
+    }
+    const where = !s.paid ? 'this week’s pay' : c && !c.deposited ? `check No. ${c.no}` : 'your balance';
+    toast(diff === 0 ? 'Shift updated.' : `Shift updated. ${diff > 0 ? `+${usd(diff)} added to` : `${usd(-diff)} taken off`} ${where}.`);
+  }
+  save();
+  renderAll();
+  return true;
+}
+
+$('#edit-start-btn').addEventListener('click', () => openEdit({ live: true }));
+$('#edit-form').addEventListener('input', updateEditSummary);
+$('#edit-form').addEventListener('click', (e) => { const b = e.target.closest('[data-nudge]'); if (b) nudgeEdit(Number(b.dataset.nudge)); });
+$('#edit-form').addEventListener('submit', (e) => { e.preventDefault(); if (saveEdit()) $('#edit-shift').close(); });
+$('#edit-cancel').addEventListener('click', () => $('#edit-shift').close());
 
 $('#check-list').addEventListener('click', (e) => {
   const b = e.target.closest('[data-open-check]');
@@ -1364,7 +1492,9 @@ $('#check-list').addEventListener('click', (e) => {
 });
 
 $('#dev-add').addEventListener('click', () => {
-  const end = state.clockedInAt ? state.clockedInAt - 1000 : Date.now();
+  // The latest free hour, so test shifts never overlap each other.
+  let end = state.clockedInAt ? state.clockedInAt - 1000 : Date.now();
+  for (let clash; (clash = state.sessions.find((x) => x.start < end && end - HOUR < x.end));) end = clash.start;
   const start = end - HOUR;
   const rate = currentRate();
   state.sessions.push({ id: `${start}`, start, end, task: 'Test shift', rate, earned: rate, paid: false });

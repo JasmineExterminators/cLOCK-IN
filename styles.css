@@ -200,6 +200,20 @@ main { padding: 28px 36px 64px; max-width: 1240px; width: 100%; }
 .empty { color: var(--muted); padding: 8px 0; }
 .icon-btn { background: none; border: 0; color: var(--faint); font-size: 18px; width: 28px; height: 28px; border-radius: 8px; }
 .icon-btn:hover { color: var(--brick); background: var(--raised); }
+.shift-actions { display: flex; gap: 2px; }
+.icon-btn.edit { display: grid; place-items: center; }
+.icon-btn.edit svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.icon-btn.edit:hover { color: var(--lamp); }
+.clock-status .edit-start { margin-left: auto; padding: 0; font-size: 13px; }
+.clock-status .edit-start:hover { color: var(--lamp); }
+#edit-shift { max-width: 480px; }
+.edit-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.edit-times:has(#edit-end-wrap[hidden]) { grid-template-columns: 1fr; }
+.account-form input[type='datetime-local'] { color-scheme: dark; min-width: 0; }
+.edit-nudge { display: flex; flex-wrap: wrap; gap: 6px; }
+.edit-nudge .ghost-btn { flex: 1; padding: 7px 8px; font-size: 13px; }
+.edit-summary { font-size: 14px; min-height: 1.5em; }
+.edit-summary .money-pos, .edit-summary .money-neg { font-weight: 600; }
 
 /* ---------- shop ---------- */
 .tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 20px; }
@@ -477,12 +491,17 @@ dialog[open] .stub-paper { animation: print 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)
 .congrats.on { background: var(--lamp); color: #20180a; border-color: var(--lamp); }
 .report p { font-size: 14px; }
 .report-reason { padding: 8px 12px; border-left: 2px solid var(--line); color: var(--muted); font-style: italic; }
+.report-response { display: grid; gap: 2px; padding: 8px 12px; border-left: 2px solid var(--moss); background: rgba(156, 191, 114, 0.07); border-radius: 0 8px 8px 0; }
+.respond-form { display: grid; gap: 8px; }
+.respond-form textarea { width: 100%; resize: vertical; min-height: 56px; padding: 10px 12px; background: var(--night); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-ctl); font: inherit; font-size: 14px; }
+.respond-form textarea:focus { outline: none; border-color: var(--lamp); }
 .report-btn { justify-self: start; margin-top: 4px; font-size: 13px; padding: 2px 0; }
 .report-shifts { display: grid; gap: 6px; max-height: 240px; overflow: auto; }
 .report-shift { display: flex !important; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); cursor: pointer; }
 .report-shift:has(input:checked) { border-color: var(--lamp); background: var(--lamp-soft); }
 .report-shift input { margin-top: 3px; accent-color: var(--lamp); }
 .report-shift span { display: grid; }
+.report-shift .tag { justify-self: start; }
 
 /* ---------- milestone bonus rows ---------- */
 .bonus-row {
@@ -608,6 +627,7 @@ dialog[open] .check { animation: slidein 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); }
   .board { grid-template-columns: 1fr; }
   .bank-waiting { flex-wrap: wrap; }
   .rail-account { display: none !important; }
+  .edit-times { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
