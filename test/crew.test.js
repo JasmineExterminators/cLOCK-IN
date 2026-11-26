@@ -23,6 +23,7 @@ test('crew: create, join, update, read, leave', async () => {
   assert.equal(got.status, 200);
   const me = got.json.members.find((m) => m.id === A.id);
   assert.equal(me.clockedInAt, now);
+  assert.equal(me.breakAt, null);
   assert.equal(me.task, 'malloc');
 
   await handleCrew(s, B, 'POST', {}, { action: 'leave', code });

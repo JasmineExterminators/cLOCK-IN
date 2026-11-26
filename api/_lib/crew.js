@@ -35,6 +35,7 @@ export function cleanCard(c = {}) {
     weekHours: num(c.weekHours, 168),
     weekStart: time(c.weekStart),
     clockedInAt: time(c.clockedInAt),
+    breakAt: time(c.breakAt), // on a water cooler run since then (the timer is paused)
     task: str(c.task, 60),
     pets: Array.isArray(c.pets) ? c.pets.filter((p) => typeof p === 'string').slice(0, 16).map((p) => p.slice(0, 16)) : [],
     shifts: Array.isArray(c.shifts) ? c.shifts.slice(0, 14).map(cleanCardShift).filter(Boolean) : [],
