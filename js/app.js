@@ -50,6 +50,8 @@ const fresh = () => ({
   activeCrew: null, // the crew shown on the Friends page
   paydayEmails: true, // email me when my paycheck is ready
   liveEdited: false, // the start of the shift on the clock now was moved by hand
+  breakAt: null, // on a water cooler run since this time; the timer is paused and the break isn't paid
+  shiftOrigin: null, // when the shift on the clock started, before breaks pushed clockedInAt later
   bonuses: [], // milestone bonuses: { id, title, amount, at, paid, checkNo }
   appliedReports: [], // upheld report ids already applied to my shifts
   owner: null, // account id this save belongs to (null = made before signing in)
@@ -169,7 +171,9 @@ const checkWords = (amt) => {
 
 const sorted = () => [...state.sessions].sort((a, b) => a.start - b.start);
 const totalHours = () => state.sessions.reduce((s, x) => s + (x.end - x.start), 0) / HOUR;
-const liveMs = () => (state.clockedInAt ? Date.now() - state.clockedInAt : 0);
+// While on a break the shift's clock stands still at the moment the break began.
+const shiftNow = () => state.breakAt || Date.now();
+const liveMs = () => (state.clockedInAt ? shiftNow() - state.clockedInAt : 0);
 const currentRate = () => rankFor(totalHours()).rate;
 const carById = (id) => CARS.find((c) => c.id === id) || CARS[0];
 const homeById = (id) => HOMES.find((h) => h.id === id) || HOMES[0];
@@ -182,7 +186,7 @@ const undeposited = () => state.checks.filter((c) => !c.deposited);
 function msBetween(from, to) {
   let ms = 0;
   for (const s of state.sessions) ms += Math.max(0, Math.min(s.end, to) - Math.max(s.start, from));
-  if (state.clockedInAt) ms += Math.max(0, Math.min(Date.now(), to) - Math.max(state.clockedInAt, from));
+  if (state.clockedInAt) ms += Math.max(0, Math.min(shiftNow(), to) - Math.max(state.clockedInAt, from));
   return ms;
 }
 const completedWeekMs = () => {
@@ -241,6 +245,8 @@ function renderBalance(animate = false) {
 function clockIn() {
   if (state.clockedInAt) return;
   state.clockedInAt = Date.now();
+  state.shiftOrigin = state.clockedInAt;
+  state.breakAt = null;
   state.task = $('#task-input').value.trim();
   save();
   renderAll();
@@ -248,6 +254,7 @@ function clockIn() {
 
 function clockOut() {
   if (!state.clockedInAt) return;
+  if (state.breakAt) endBreak(true); // the break doesn't count, so the shift ends where the break began
   const start = state.clockedInAt, end = Date.now();
   const before = rankFor(totalHours());
   const rate = before.rate;
@@ -264,7 +271,90 @@ function clockOut() {
   renderAll();
 }
 
-const toggleClock = () => (state.clockedInAt ? clockOut() : clockIn());
+const toggleClock = () => (state.breakAt ? endBreak() : state.clockedInAt ? clockOut() : clockIn());
+
+/* ------------------------------------------------------------------ */
+/* Water cooler run: a 5-minute break that pauses the timer            */
+/* ------------------------------------------------------------------ */
+
+const BREAK_MS = 5 * 60e3;
+const COOLER_LINES = [
+  'Refilling your water bottle very, very slowly',
+  'Hearing about someone’s fantasy league',
+  'Reading every flyer on the fridge',
+  'Debating whether the office plant is real',
+  'Pretending to look for a snack',
+  'Agreeing that this week has been a lot',
+];
+let coolerLine = 0;
+let breakTimer = null;
+let breakNagged = false;
+let audio = null;
+
+function chime() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime;
+    [660, 880, 1320].forEach((f, i) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t + i * 0.16);
+      g.gain.linearRampToValueAtTime(0.18, t + i * 0.16 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.16 + 0.5);
+      o.connect(g).connect(audio.destination);
+      o.start(t + i * 0.16); o.stop(t + i * 0.16 + 0.55);
+    });
+  } catch {}
+}
+
+function startBreak() {
+  if (!state.clockedInAt || state.breakAt) return;
+  state.breakAt = Date.now();
+  breakNagged = false;
+  coolerLine = Math.floor(Math.random() * COOLER_LINES.length);
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume?.(); } catch {}
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+  scheduleBreakReminder();
+  save();
+  renderAll();
+  toast('Off to the water cooler. Your timer is paused. Back in 5.');
+}
+
+// quiet: clocking out straight from a break
+function endBreak(quiet = false) {
+  if (!state.breakAt) return;
+  const away = Date.now() - state.breakAt;
+  state.clockedInAt += away; // push the start later, so the shift's length leaves the break out
+  state.breakAt = null;
+  clearTimeout(breakTimer);
+  if (quiet) return;
+  save();
+  renderAll();
+  toast(`Back from the water cooler after ${dur(away)}. Locked back in.`);
+}
+
+function scheduleBreakReminder() {
+  clearTimeout(breakTimer);
+  if (!state.breakAt) return;
+  breakTimer = setTimeout(breakOver, Math.max(0, state.breakAt + BREAK_MS - Date.now()));
+}
+
+function breakOver() {
+  if (!state.breakAt || breakNagged) return;
+  breakNagged = true;
+  chime();
+  toast('Water cooler run’s over. Time to lock back in.');
+  if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+    try {
+      const n = new Notification('Time to lock back in', { body: 'Your 5-minute water cooler run is up.', icon: 'favicon.svg', tag: 'clockin-break' });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch {}
+  }
+  renderClock();
+}
+
+$('#break-btn').addEventListener('click', startBreak);
+$('#break-out').addEventListener('click', clockOut);
 
 function showReceipt({ start, end, task, rate, earned, promoted }) {
   $('#stub-date').textContent = `${shortDate(start)}, ${time(start)}–${time(end)}`;
@@ -386,26 +476,38 @@ $$('[data-place]').forEach((b) => b.addEventListener('click', () => { placeView 
 let lastTimer = '', lastOn = null;
 function renderClock() {
   const on = !!state.clockedInAt;
+  const brk = on && !!state.breakAt;
   const ms = liveMs();
   const rate = currentRate();
-  $('#clock-panel').classList.toggle('on', on);
+  const left = brk ? state.breakAt + BREAK_MS - Date.now() : 0;
+  $('#clock-panel').classList.toggle('on', on && !brk);
+  $('#clock-panel').classList.toggle('break', brk);
+  $('#clock-panel').classList.toggle('over', brk && left <= 0);
   const t = clock(ms);
   $('#timer').textContent = t;
-  if (t !== lastTimer || on !== lastOn) {
-    lastTimer = t; lastOn = on;
-    dotText($('#timer-canvas'), t, on
+  if (t !== lastTimer || `${on}${brk}` !== lastOn) {
+    lastTimer = t; lastOn = `${on}${brk}`;
+    dotText($('#timer-canvas'), t, brk
+      ? { cell: 12, gap: 2, pad: 1, color: '#7fb4c4', ghost: 'rgba(127,180,196,0.07)' }
+      : on
       ? { cell: 12, gap: 2, pad: 1, color: '#f2b54a', ghost: 'rgba(242,181,74,0.08)', glow: 12 }
       : { cell: 12, gap: 2, pad: 1, color: '#5b6069', ghost: 'rgba(255,255,255,0.04)' });
   }
   $('#shift-earned').textContent = usd((ms / HOUR) * rate);
   $('#shift-rate').textContent = `this shift at ${usd(rate, false)}/hr`;
-  $('#clock-status-text').textContent = on ? `On the clock since ${time(state.clockedInAt)}` : 'Off the clock';
-  $('#edit-start-btn').hidden = !on;
-  $('#punch-label').textContent = on ? 'Clock out' : 'Clock in';
+  $('#clock-status-text').textContent = brk
+    ? (left > 0 ? `${COOLER_LINES[coolerLine]}. Back in ${clock(left).replace(/^0:/, '')}` : `Over your break by ${clock(-left).replace(/^0:/, '')}. Lock back in!`)
+    : on ? `On the clock since ${time(state.clockedInAt)}` : 'Off the clock';
+  $('#shift-rate').textContent = brk ? 'paused while you’re at the water cooler' : `this shift at ${usd(rate, false)}/hr`;
+  $('#edit-start-btn').hidden = !on || brk;
+  $('#break-row').hidden = !on;
+  $('#break-btn').hidden = brk;
+  $('#break-out').hidden = !brk;
+  $('#punch-label').textContent = brk ? 'Back to work' : on ? 'Clock out' : 'Clock in';
   const input = $('#task-input');
   input.disabled = on;
   if (on) input.value = state.task || '';
-  document.title = on ? `${t} · cLOCK IN` : 'cLOCK IN';
+  document.title = brk ? (left > 0 ? `Break ${clock(left).replace(/^0:/, '')} · cLOCK IN` : (Math.floor(Date.now() / 1000) % 2 ? 'Lock back in! · cLOCK IN' : '⏰ Break’s over')) : on ? `${t} · cLOCK IN` : 'cLOCK IN';
   $('#stat-pending').textContent = usd(pendingPay() + (ms / HOUR) * rate);
 }
 
@@ -625,6 +727,7 @@ function myCard() {
     weekHours: round2(completedWeekMs() / HOUR),
     weekStart: startOfWeek(),
     clockedInAt: state.clockedInAt || null,
+    breakAt: state.clockedInAt ? state.breakAt || null : null,
     task: state.clockedInAt ? state.task || '' : '',
     pets: state.pets,
     shifts: sorted().filter((x) => x.end > Date.now() - 7 * DAY).slice(-14).reverse()
@@ -709,7 +812,8 @@ function applyReport(r) {
   state.appliedReports.push(r.id);
   const cap = r.capHours * HOUR;
   if (r.shift.end == null) {
-    if (state.clockedInAt && Math.abs(state.clockedInAt - r.shift.start) < 60e3) {
+    if (state.clockedInAt && r.shift.start >= (state.shiftOrigin ?? state.clockedInAt) - 60e3) {
+      if (state.breakAt) endBreak(true);
       const start = state.clockedInAt, end = Math.min(Date.now(), start + cap), rate = currentRate();
       state.sessions.push({ id: `${start}`, start, end, task: state.task, rate, earned: round2(((end - start) / HOUR) * rate), paid: false, reported: true });
       state.clockedInAt = null;
@@ -871,7 +975,7 @@ $('#nickname').addEventListener('change', (e) => {
 const liveWeekHours = (c) => {
   const wk = startOfWeek();
   let h = c.weekStart === wk ? Number(c.weekHours) || 0 : 0;
-  if (c.clockedInAt) h += Math.max(0, Date.now() - Math.max(c.clockedInAt, wk)) / HOUR;
+  if (c.clockedInAt) h += Math.max(0, (c.breakAt || Date.now()) - Math.max(c.clockedInAt, wk)) / HOUR;
   return h;
 };
 
@@ -964,7 +1068,7 @@ function renderFriends() {
       const isMe = c.id === me;
       const name = (isMe ? state.name : c.name) || (isMe ? 'You' : 'Someone');
       const home = homeById(c.home), car = carById(c.car);
-      return `<article class="friend${c.clockedInAt ? ' on' : ''}${isMe ? ' me' : ''}">
+      return `<article class="friend${c.clockedInAt ? (c.breakAt ? ' break' : ' on') : ''}${isMe ? ' me' : ''}">
         <div class="friend-art"><canvas data-scene="${esc(c.id)}"></canvas><span class="friend-rank">${i + 1}</span></div>
         <div class="friend-body">
           <div class="friend-name"><h3>${esc(name)}</h3>${isMe ? '<span class="tag">You</span>' : ''}</div>
@@ -1003,7 +1107,9 @@ function tickFriends() {
     const wk = document.querySelector(`[data-week="${CSS.escape(c.id)}"]`);
     const card = c.id === currentUser()?.id ? { ...c, ...myCard() } : c;
     if (st) {
-      st.innerHTML = card.clockedInAt
+      st.innerHTML = card.clockedInAt && card.breakAt
+        ? `<span class="pulse cooler" aria-hidden="true"></span> At the water cooler, ${Date.now() - card.breakAt < BREAK_MS ? `back in ${Math.max(1, Math.ceil((card.breakAt + BREAK_MS - Date.now()) / 60e3))}m` : `${Math.floor((Date.now() - card.breakAt - BREAK_MS) / 60e3)}m over`}`
+        : card.clockedInAt
         ? `<span class="pulse on" aria-hidden="true"></span> On the clock ${clock(Date.now() - card.clockedInAt)}${card.task ? `, on ${esc(card.task)}` : ''}`
         : '<span class="pulse" aria-hidden="true"></span> Off the clock';
     }
@@ -1037,6 +1143,7 @@ function applyState(next) {
   crewData.clear();
   lastPublished = '';
   processPaydays();
+  scheduleBreakReminder();
   renderAll();
 }
 
@@ -1163,6 +1270,7 @@ async function signOut() {
   if (!ok) return;
   if (dirty) await pushSave();
   signOutLocal();
+  clearTimeout(breakTimer);
   state = fresh();
   saveLocal();
   crewData.clear();
@@ -1519,6 +1627,7 @@ $('#dev-cash').addEventListener('click', () => {
 $('#dev-reset').addEventListener('click', async () => {
   if (!(await ask('Reset all shifts, pay, and purchases in this browser?', 'Reset everything'))) return;
   const name = state.name;
+  clearTimeout(breakTimer);
   state = fresh();
   state.name = name;
   save();
@@ -1529,7 +1638,7 @@ $('#dev-reset').addEventListener('click', async () => {
 
 window.addEventListener('hashchange', route);
 window.addEventListener('storage', (e) => {
-  if (e.key === KEY) { state = load(); lastSceneKey = ''; renderAll(); }
+  if (e.key === KEY) { state = load(); lastSceneKey = ''; scheduleBreakReminder(); renderAll(); }
 });
 
 /* ------------------------------------------------------------------ */
@@ -1541,11 +1650,13 @@ processPaydays();
 save(); // persist any migration
 route();
 renderAll();
-pullSave().then(publishMe);
+pullSave().then(() => { publishMe(); scheduleBreakReminder(); });
+scheduleBreakReminder();
 if (undeposited().length) openCheck(undeposited()[0]);
 
 setInterval(() => {
   if (state.clockedInAt) renderClock();
+  if (state.breakAt && !breakNagged && Date.now() >= state.breakAt + BREAK_MS) breakOver(); // backup if the timer was throttled
   if (view === 'friends' && state.crews.length) tickFriends();
 }, 1000);
 // Check on the crew every 15 seconds while the Friends page is open.
