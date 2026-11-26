@@ -5,6 +5,7 @@ A punch clock for studying. Clock in when you lock in, get paid by the hour, and
 ## What's in it
 
 - **Time clock**: clock in (button, Enter in the task box, or Space), with a live timer and live earnings. Clocking out prints a shift receipt.
+- **Water cooler run**: while you're on the clock, take a 5-minute break. The timer pauses (breaks aren't paid), a countdown shows how long you have left, and when time's up you get a chime, a notification if the tab is in the background, and a nudge to lock back in. Your crew sees you're at the water cooler.
 - **Weekly payday**: shifts add to "this week's pay". Every Friday at 5 PM that week's pay becomes a paycheck you open and deposit. Change the day and time with `PAYDAY` in `js/data.js`.
 - **Promotions**: total hours raise your job title and hourly rate (Intern at $15/hr, up to Chief lock-in officer at $65/hr).
 - **Pittsburgh**: eleven homes by neighborhood, from a shared-bedroom dorm through a suite, a studio dorm and a shared apartment, up to a Fox Chapel riverfront mansion, and eight cars (up to the red Vela supercars), all with a skyline, river, and yellow bridge behind your place. Chicago and New York show as locked "next cities".
