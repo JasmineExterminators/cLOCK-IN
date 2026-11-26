@@ -215,6 +215,26 @@ main { padding: 28px 36px 64px; max-width: 1240px; width: 100%; }
 .edit-summary { font-size: 14px; min-height: 1.5em; }
 .edit-summary .money-pos, .edit-summary .money-neg { font-weight: 600; }
 
+/* ---------- water cooler run (break) ---------- */
+.break-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: -6px; }
+.break-btn { display: inline-flex; align-items: center; gap: 8px; }
+.break-btn svg { width: 15px; height: 15px; fill: none; stroke: #7fb4c4; stroke-width: 1.4; stroke-linejoin: round; }
+.break-len { font-size: 12px; color: var(--muted); padding: 1px 7px; border-radius: 6px; background: var(--night); }
+.clock.break { border-color: rgba(127, 180, 196, 0.5); box-shadow: 0 24px 60px -30px rgba(127, 180, 196, 0.45) inset; }
+.clock.break .pulse { background: #7fb4c4; animation: none; }
+.clock.break .clock-status { color: #9fcad6; }
+.clock.break .clock-earn .money-pos { color: var(--muted); }
+.clock.break.over { border-color: rgba(242, 181, 74, 0.7); animation: nudge 1.6s ease-in-out infinite; }
+.clock.break.over .clock-status { color: var(--lamp); }
+.clock.break.over .pulse { background: var(--lamp); animation: blink 1s steps(2, jump-none) infinite; }
+@keyframes nudge { 50% { box-shadow: 0 0 0 4px rgba(242, 181, 74, 0.18), 0 24px 60px -30px rgba(242, 181, 74, 0.5) inset; } }
+.clock.break .punch { background: var(--lamp); color: #20180a; box-shadow: 0 4px 0 #b9842c; border: 0; }
+.clock.break .punch:hover { background: #f5c264; }
+.clock.break .punch kbd { background: rgba(0, 0, 0, 0.12); color: rgba(32, 24, 10, 0.7); }
+.friend.break { border-color: rgba(127, 180, 196, 0.5); }
+.friend.break .friend-status { color: #9fcad6; }
+.pulse.cooler { background: #7fb4c4; }
+
 /* ---------- shop ---------- */
 .tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 20px; }
 .tabs button { background: none; border: 0; padding: 8px 18px; border-radius: 8px; color: var(--muted); font-weight: 500; }
